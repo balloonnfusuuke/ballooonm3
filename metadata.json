@@ -1,0 +1,5 @@
+{
+  "name": "IndieBall Stats Manager",
+  "description": "A robust, mobile-friendly baseball data management system designed for independent league teams. Features rapid data entry, automatic advanced stat calculation (OPS, etc.), and CSV/Excel export.",
+  "requestFramePermissions": []
+}
