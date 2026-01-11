@@ -1,9 +1,11 @@
+
 export interface Player {
   id: string;
   name: string;
   number: string;
   position: string;
   type: 'batter' | 'pitcher' | 'two-way';
+  teamId?: string; // If undefined, belongs to "My Team". If defined, belongs to that Opponent ID.
 }
 
 export interface Opponent {
@@ -15,7 +17,9 @@ export interface Opponent {
 export type ResultType = 
   | '1B' | '2B' | '3B' | 'HR' 
   | 'BB' | 'IBB' | 'HBP' 
-  | 'SO' | 'GO' | 'FO' | 'SAC' | 'SF' | 'ROE' | 'FC' | 'XI';
+  | 'SO' | 'GO' | 'FO' | 'SAC' | 'SF' | 'ROE' | 'FC' | 'XI'
+  | 'GIDP' // NEW: Ground into Double Play
+  | 'WP' | 'BK'; // Added Pitcher Faults
 
 export type PositionNum = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 0;
 
@@ -38,6 +42,24 @@ export interface PlateAppearance {
   // Scorebook Coordinates (0-100%)
   coordX?: number; 
   coordY?: number;
+}
+
+// NEW: Live Pitcher Record (Play-by-Play)
+export interface PitcherPlayRecord {
+  id: string;
+  gameId: string;
+  date: string;
+  opponent: string;
+  playerId: string;
+  playerName: string;
+  inning: number;
+  result: ResultType; // Using same ResultType as batter
+  coordX?: number;
+  coordY?: number;
+  // Stats impact
+  isOut: boolean;
+  runScored: number; // Runs scored on this play
+  earnedRun: number; // ER on this play
 }
 
 // --- Batch Data Types ---

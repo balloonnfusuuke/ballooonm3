@@ -1,4 +1,6 @@
-import { PlateAppearance, GameBatchRecord, BatterStats, PitcherGameRecord, PitcherStats, PositionNum } from '../types';
+
+import { PlateAppearance, GameBatchRecord, BatterStats, PitcherGameRecord, PitcherStats, PositionNum, PitcherPlayRecord } from '../types';
+import { getPitcherPlayRecords } from './dataService';
 
 // League Batter Helpers
 interface LeagueBatterStats {
@@ -17,10 +19,7 @@ const calculateLeagueBatterStats = (batters: BatterStats[]): LeagueBatterStats =
         xr += b.xr;
         runs += b.r;
     });
-    // Approx league innings from PA? Hard to say without pitcher data here.
-    // We will assume approx 38 PA per 9 innings. Innings = PA / 4.2 approx?
-    // Better to use a standard constant or just simple ratio if Pitcher stats not passed.
-    // Let's assume RPW logic uses Pitcher data usually. If not available, we assume average game.
+    // Approx league innings from PA. 
     return { totalPA: pa, totalRC: rc, totalXR: xr, totalRuns: runs, totalInnings: pa / 4.2 };
 };
 
@@ -64,10 +63,24 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
 
   // Process Live
   liveRecords.forEach(pa => {
+    // Special handling for Runner Events (SB/CS)
+    if (['XI', 'WP', 'BK'].includes(pa.result)) {
+        if (pa.result === 'XI') {
+            if (pa.isSteal) {
+                t.sb++;
+                const gs = getGameStats(pa.gameId);
+                gs.sb++;
+            } else {
+                t.cs++; // Correctly count Caught Stealing
+            }
+        }
+        return; // Don't count as PA or anything else
+    }
+
     t.rbi += pa.rbi;
     t.pa++; 
     
-    // Collect spray data if available
+    // Collect spray data
     if (pa.coordX !== undefined && pa.coordY !== undefined) {
         t.spray_data.push({ x: pa.coordX, y: pa.coordY, result: pa.result });
     }
@@ -78,16 +91,13 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
     let isAB = false; let isHit = false;
 
     // Direction Logic
-    // Left: 5(3B), 6(SS), 7(LF)
-    // Center: 1(P), 2(C), 8(CF)
-    // Right: 3(1B), 4(2B), 9(RF)
     if (pa.result !== 'SO' && pa.result !== 'BB' && pa.result !== 'HBP' && pa.result !== 'SAC') {
         if ([5,6,7].includes(pa.direction)) t.dir_left++;
         else if ([1,2,8].includes(pa.direction)) t.dir_center++;
         else if ([3,4,9].includes(pa.direction)) t.dir_right++;
     }
 
-    switch (pa.result) {
+    switch (pa.result as any) {
       case '1B': t.h++; t.ab++; isHit=true; isAB=true; gs.h++; break;
       case '2B': t.h++; t.double++; t.ab++; isHit=true; isAB=true; gs.h++; break;
       case '3B': t.h++; t.triple++; t.ab++; isHit=true; isAB=true; gs.h++; break;
@@ -97,17 +107,10 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
       case 'HBP': t.hbp++; break;
       case 'SO': t.so++; t.ab++; isAB=true; gs.k++; break;
       case 'GO': case 'FO': case 'ROE': case 'FC': t.ab++; isAB=true; break;
+      case 'GIDP': t.ab++; t.gidp++; isAB=true; break;
       case 'SF': t.sf++; break;
       case 'SAC': t.sac++; break;
-      case 'XI': t.pa--; break;
     }
-    
-    // Note: 'r' (Run Scored) is not explicitly in PlateAppearance result (only RBI). 
-    // Usually input form should have "Scored?" checkbox, but for MVP we might miss R from live unless inferred.
-    // For now we assume R is manual or batch only, OR we add it to input. 
-    // Prompt "Input is minimal". Let's assume R comes from Batch mostly or we need to add it.
-    // *Correction*: Input form doesn't have "Scored". So R will be 0 for Live records unless we add it.
-    // We will rely on Batch for accurate R counts or simple Live R count if added later.
 
     if ((pa.runner2 || pa.runner3) && isAB) {
       t.risp_ab++;
@@ -123,7 +126,7 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
     t.r += r.r; t.rbi += r.rbi; t.sb += r.sb; t.cs += r.cs; t.gidp += r.gidp;
     t.pa += (r.ab + r.bb + r.hbp + r.sf + r.sac);
 
-    const gid = r.date + r.opponent; // Simple ID
+    const gid = r.date + r.opponent; 
     const gs = getGameStats(gid);
     gs.h += r.h;
     gs.hr += r.hr;
@@ -143,12 +146,10 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
       if (stats.rbi >= 3) t.multi_rbi++;
       if (stats.r >= 2) t.multi_r++;
       if (stats.k >= 3) t.multi_k++;
-      if (stats.bb >= 2) t.multi_bb++; // Includes IBB/HBP? Usually just BB.
+      if (stats.bb >= 2) t.multi_bb++;
       if (stats.sb >= 2) t.multi_sb++;
   });
   
-  // HR Win-Loss (Placeholder: needs Game Result data linked to stats)
-  // Since we don't track Game Win/Loss in Batter input, we leave this empty or mock.
   t.hr_win_loss = `---`; 
 
   // --- 3. Basic Formulae ---
@@ -167,21 +168,29 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
   t.iso_p = t.slg - t.avg;
   t.iso_d = t.obp - t.avg;
 
-  // RC
+  // RC (Runs Created) - Switch to Basic RC for stability in small samples
+  // Formula: RC = (A * B) / C
+  // A = H + BB + HBP - CS - GIDP
+  // B = TB + 0.26*(BB + HBP) + 0.52*(SF + SAC) + 0.64*SB
+  // C = AB + BB + HBP + SF + SAC
   const rcA = t.h + t.bb + t.hbp - t.cs - t.gidp;
-  const rcB = totalBases + (0.26 * (t.bb + t.hbp)) + (0.53 * (t.sf + t.sac)) + (0.64 * t.sb) - (0.03 * t.so);
+  const rcB = totalBases + (0.26 * (t.bb + t.hbp)) + (0.52 * (t.sf + t.sac)) + (0.64 * t.sb);
   const rcC = t.ab + t.bb + t.hbp + t.sf + t.sac; 
-  if (rcC > 0) t.rc = (((rcA + 2.4 * rcB) * (rcB + 3 * rcC)) / (9 * rcC)) - (0.9 * rcC);
   
+  if (rcC > 0) {
+      t.rc = (rcA * rcB) / rcC;
+  }
+  
+  // Rate Stats (RC27, XR27)
   const totalOuts = t.ab - t.h + t.sac + t.sf + t.cs + t.gidp;
-  if (totalOuts > 0) t.rc27 = (t.rc * 27) / totalOuts;
+  t.rc27 = totalOuts > 0 ? (t.rc * 27) / totalOuts : (t.rc > 0 ? Infinity : 0);
 
-  // XR
+  // XR (Extrapolated Runs) - Linear Weights
   const xr = (0.50 * singles) + (0.72 * t.double) + (1.04 * t.triple) + (1.44 * t.hr) 
            + (0.34 * (t.bb + t.hbp - t.ibb)) + (0.25 * t.ibb) + (0.18 * t.sb) - (0.32 * t.cs) 
            - (0.09 * (t.ab - t.h - t.so)) - (0.098 * t.so) - (0.37 * t.gidp) + (0.30 * t.sf) + (0.04 * t.sac);
-  t.xr = xr;
-  if (totalOuts > 0) t.xr27 = (t.xr * 27) / totalOuts;
+  t.xr = xr; 
+  t.xr27 = totalOuts > 0 ? (t.xr * 27) / totalOuts : (t.xr > 0 ? Infinity : 0);
 
   const babipDenom = t.ab - t.so - t.hr + t.sf;
   t.babip = babipDenom > 0 ? (t.h - t.hr) / babipDenom : 0;
@@ -195,9 +204,6 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
       const lgXrPerPa = leagueStats.totalXR / leagueStats.totalPA;
       t.xr_plus = t.xr - (lgXrPerPa * t.pa);
 
-      // RPW (Run Per Win) - Need League Pitching Stats ideally.
-      // RPW = 10 * sqrt((LgRuns + LgRunsAllowed)/LgIP).
-      // If we don't have LgPitching, assume LgRuns ~ LgRunsAllowed.
       const rpw = 10 * Math.sqrt((leagueStats.totalRuns * 2) / leagueStats.totalInnings);
       if (rpw > 0) {
           t.rcwin = t.rcaa / rpw;
@@ -211,30 +217,30 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
   t.pa_k = t.so > 0 ? t.pa / t.so : 0;
   t.ab_hr = t.hr > 0 ? t.ab / t.hr : 0;
 
-  // SecA = (TB - H + BB + SB - CS) / AB
+  // SecA: (TB - H + BB + SB - CS) / AB
   if (t.ab > 0) {
       t.sec_a = (totalBases - t.h + t.bb + t.sb - t.cs) / t.ab;
   }
 
-  // TA = (TB + BB + HBP + SB - CS) / (AB - H + CS + GIDP)
+  // TA
   const taDenom = t.ab - t.h + t.cs + t.gidp;
   if (taDenom > 0) {
       t.ta = (totalBases + t.bb + t.hbp + t.sb - t.cs) / taDenom;
   }
 
-  // PS = (HR * SB * 2) / (HR + SB)
+  // PS
   if ((t.hr + t.sb) > 0) {
       t.ps = (t.hr * t.sb * 2) / (t.hr + t.sb);
   }
 
   // TTO
-  t.tto = t.hr + t.bb + t.so; // Note: TTO usually uses BB (not HBP)
+  t.tto = t.hr + t.bb + t.so; 
   t.tto_rate = t.pa > 0 ? t.tto / t.pa : 0;
 
   return t;
 };
 
-// ... (Pitcher Code remains, reused from previous block) ...
+
 // Global Stats Helper for Relative Metrics (RSAA, etc.)
 interface LeagueStats {
     totalIP: number;
@@ -251,18 +257,16 @@ export const calculateLeagueStats = (allPitcherRecords: PitcherGameRecord[]): Le
     let outs = 0;
     
     allPitcherRecords.forEach(r => {
+        // Sanitize ER just in case (Data correction)
+        const safeER = Math.min(r.er, r.r);
         runs += r.r;
-        er += r.er;
+        er += safeER;
         outs += r.outs;
     });
 
     const ip = outs / 3;
     const avgERA = ip > 0 ? (er * 9) / ip : 0;
     const avgR_IP = ip > 0 ? runs / ip : 0;
-    
-    // RPW = 10 * sqrt((Runs + Runs)/IP) roughly. Usually (LeagueRuns*2/IP) assuming avg team
-    // Formula Prompt: RPW = 10 * sqrt[(リーグ得点+リーグ失点)/リーグ投球回]
-    // Since we only have Pitching records (Runs Allowed), we assume LeagueRuns approx LeagueRunsAllowed
     const rpw = ip > 0 ? 10 * Math.sqrt((runs * 2) / ip) : 10;
 
     return {
@@ -270,7 +274,7 @@ export const calculateLeagueStats = (allPitcherRecords: PitcherGameRecord[]): Le
         totalRuns: runs,
         totalER: er,
         avgERA,
-        avgR_IP, // League Mean Runs Allowed per Inning
+        avgR_IP, 
         avgRPW: rpw
     };
 };
@@ -315,10 +319,62 @@ export const calculatePitcherStats = (
     let reliefOuts = 0;
     let nhbCount = 0;
 
-    // Sorting for Streak Calculation
-    const sortedRecords = [...records].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // --- 1. Fetch & Aggregate LIVE Play Logs for this Pitcher ---
+    const allPlayRecs = getPitcherPlayRecords();
+    const myPlayRecs = allPlayRecs.filter(r => r.playerId === t.playerId);
+    
+    // Group Live Records by "GameID" (Date + Opponent)
+    const liveGames = new Map<string, Partial<PitcherGameRecord>>();
 
-    sortedRecords.forEach((r, index) => {
+    myPlayRecs.forEach(p => {
+        const gid = p.gameId; // date-opponent
+        if (!liveGames.has(gid)) {
+            liveGames.set(gid, {
+                id: gid, date: p.date, opponent: p.opponent, playerId: p.playerId, playerName: p.playerName,
+                outs: 0, h: 0, hr: 0, r: 0, er: 0, bb: 0, ibb: 0, hbp: 0, k: 0, 
+                ab: 0, h2: 0, h3: 0, sac: 0, sf: 0, go: 0, fo: 0,
+                allowed_spray: [],
+                isStarter: false, result: null, wild_pitch: 0, p_count: 0,
+                run_support: 0, support_innings: 0
+            });
+        }
+        const g = liveGames.get(gid)!;
+        
+        if (p.isOut) g.outs = (g.outs || 0) + 1;
+        
+        if (['1B','2B','3B','HR'].includes(p.result)) {
+            g.h = (g.h || 0) + 1;
+            g.ab = (g.ab || 0) + 1;
+        }
+        if (['GO','FO','SO','GIDP'].includes(p.result)) g.ab = (g.ab || 0) + 1;
+        if (['ROE','FC'].includes(p.result)) g.ab = (g.ab || 0) + 1;
+
+        if (p.result === '2B') g.h2 = (g.h2 || 0) + 1;
+        if (p.result === '3B') g.h3 = (g.h3 || 0) + 1;
+        if (p.result === 'HR') g.hr = (g.hr || 0) + 1;
+        if (p.result === 'BB' || p.result === 'IBB') g.bb = (g.bb || 0) + 1;
+        if (p.result === 'IBB') g.ibb = (g.ibb || 0) + 1;
+        if (p.result === 'HBP') g.hbp = (g.hbp || 0) + 1;
+        if (p.result === 'SO') g.k = (g.k || 0) + 1;
+        if (p.result === 'SAC') g.sac = (g.sac || 0) + 1;
+        if (p.result === 'SF') g.sf = (g.sf || 0) + 1;
+        if (p.result === 'GO' || p.result === 'GIDP') g.go = (g.go || 0) + 1;
+        if (p.result === 'FO') g.fo = (g.fo || 0) + 1;
+        if (p.result === 'WP') g.wild_pitch = (g.wild_pitch || 0) + 1;
+
+        g.r = (g.r || 0) + (p.runScored || 0);
+        g.er = (g.er || 0) + (p.earnedRun || 0);
+        
+        if (p.coordX !== undefined && p.coordY !== undefined) {
+             g.allowed_spray = [...(g.allowed_spray || []), { x: p.coordX, y: p.coordY, result: p.result }];
+        }
+    });
+
+    const combinedRecords = [...records, ...Array.from(liveGames.values()) as PitcherGameRecord[]];
+    t.games = new Set(combinedRecords.map(r => r.date + r.opponent)).size;
+    const sortedRecords = combinedRecords.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    sortedRecords.forEach((r) => {
         // Counting Stats
         if (r.result === 'W') t.wins++;
         if (r.result === 'L') t.losses++;
@@ -332,7 +388,11 @@ export const calculatePitcherStats = (
         t.h += r.h;
         t.hr += r.hr;
         t.r += r.r;
-        t.er += r.er;
+        
+        // FIX: Sanitize ER. ER cannot be > R.
+        const safeER = Math.min(r.er, r.r);
+        t.er += safeER;
+        
         t.bb += r.bb;
         t.ibb += (r.ibb || 0);
         t.hbp += r.hbp;
@@ -340,7 +400,6 @@ export const calculatePitcherStats = (
         t.wild_pitch += (r.wild_pitch || 0);
         t.p_count += (r.p_count || 0);
         
-        // Detailed
         t.ab += (r.ab || 0);
         t.h2 += (r.h2 || 0);
         t.h3 += (r.h3 || 0);
@@ -355,9 +414,9 @@ export const calculatePitcherStats = (
         
         if (r.isStarter) {
             startCount++;
-            if (r.outs >= 18 && r.er <= 3) qsCount++;
-            if (r.outs >= 21 && r.er <= 2) hqsCount++;
-            if (r.outs >= 21 && r.er <= 3) sqsCount++;
+            if (r.outs >= 18 && safeER <= 3) qsCount++;
+            if (r.outs >= 21 && safeER <= 2) hqsCount++;
+            if (r.outs >= 21 && safeER <= 3) sqsCount++;
             
             t.run_support_total += (r.run_support || 0);
             t.support_innings_total += (r.support_innings || 0);
@@ -365,7 +424,6 @@ export const calculatePitcherStats = (
             reliefCount++;
             reliefRuns += r.r;
             reliefOuts += r.outs;
-            // NHB: No Hits, No BB/HBP (Error allowed)
             if (r.h === 0 && r.bb === 0 && r.hbp === 0) nhbCount++;
         }
 
@@ -400,7 +458,6 @@ export const calculatePitcherStats = (
     }
 
     // --- Calculations ---
-    
     const innings = t.outs / 3;
     t.ipDisplay = `${Math.floor(t.outs / 3)}${t.outs % 3 > 0 ? '.' + (t.outs % 3) : ''}`;
     
@@ -429,9 +486,6 @@ export const calculatePitcherStats = (
     }
     if (t.ab > 0) {
         t.baa = t.h / t.ab;
-        
-        // SLG Allowed: Need Total Bases.
-        // TB = 1B + 2*2B + 3*3B + 4*HR. 1B = H - 2B - 3B - HR
         const singles = t.h - t.h2 - t.h3 - t.hr;
         const tb = singles + (2 * t.h2) + (3 * t.h3) + (4 * t.hr);
         t.slg_allowed = tb / t.ab;

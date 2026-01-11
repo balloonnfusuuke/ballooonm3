@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { InputForm } from './components/InputForm';
 import { Dashboard } from './components/Dashboard';
@@ -53,7 +54,13 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
-            {activeTab === TabView.INPUT && <InputForm />}
+            {/* 
+               InputForm is kept mounted (display: none) to preserve state when switching tabs.
+               Other tabs are unmounted to ensure they re-fetch fresh data when clicked.
+            */}
+            <div style={{ display: activeTab === TabView.INPUT ? 'block' : 'none' }}>
+                <InputForm />
+            </div>
             {activeTab === TabView.DASHBOARD && <Dashboard />}
             {activeTab === TabView.DATA && <HistoryTab />}
             {activeTab === TabView.SETTINGS && <Settings />}
