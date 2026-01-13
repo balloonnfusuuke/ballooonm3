@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { PlateAppearance, GameBatchRecord, BatterStats, PitcherStats, Player, Opponent } from '../types';
 import { getPARecords, getBatchRecords, getPitcherRecords, exportUnifiedCSV, getPlayers, getOpponents } from '../services/dataService';
 import { calculateBatterStats, calculatePitcherStats, calculateLeagueStats, formatStat } from '../services/statsService';
-import { Download, BarChart2, TrendingUp, RefreshCw, User, Target, MapPin, Calendar, Activity, Info, Filter, Shield, Swords, Crown, Medal } from 'lucide-react';
+import { Download, BarChart2, TrendingUp, RefreshCw, User, Target, MapPin, Calendar, Activity, Info, Filter, Shield, Swords, Crown, Medal, BookOpen } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts';
+import { MetricsGuideModal } from './MetricsGuideModal';
 
 type DateRange = 'all' | 'month' | 'week';
 type TrendMetric = 'avg' | 'ops' | 'era' | 'whip';
@@ -34,6 +35,9 @@ export const Dashboard: React.FC = () => {
   // Trend State
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('avg');
   const [trendData, setTrendData] = useState<any[]>([]);
+
+  // Modal State
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     const opps = getOpponents();
@@ -381,13 +385,18 @@ export const Dashboard: React.FC = () => {
               <p className="text-slate-500 text-sm">{mode === 'team' ? '全試合のデータを集計・分析' : '特定の相手との相性を分析'}</p>
             </div>
             
-            <div className="flex bg-slate-100 p-1 rounded-lg">
-                <button onClick={() => setMode('team')} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-2 ${mode==='team' ? 'bg-white shadow text-team-navy' : 'text-slate-400'}`}>
-                    <BarChart2 size={16}/> チーム分析
+            <div className="flex items-center gap-2">
+                <button onClick={() => setGuideOpen(true)} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-bold text-xs transition">
+                    <BookOpen size={16}/> 指標ガイド
                 </button>
-                <button onClick={() => setMode('scouting')} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-2 ${mode==='scouting' ? 'bg-white shadow text-red-700' : 'text-slate-400'}`}>
-                    <Swords size={16}/> 対戦分析
-                </button>
+                <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button onClick={() => setMode('team')} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-2 ${mode==='team' ? 'bg-white shadow text-team-navy' : 'text-slate-400'}`}>
+                        <BarChart2 size={16}/> チーム分析
+                    </button>
+                    <button onClick={() => setMode('scouting')} className={`px-4 py-2 text-sm font-bold rounded-lg transition flex items-center gap-2 ${mode==='scouting' ? 'bg-white shadow text-red-700' : 'text-slate-400'}`}>
+                        <Swords size={16}/> 対戦分析
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -935,6 +944,7 @@ export const Dashboard: React.FC = () => {
               <span>各種相対指標（RCAA, RSAAなど）は、現在表示されているチーム内選手の平均成績を基準（ゼロ）として算出されています。</span>
           </div>
 
+          <MetricsGuideModal isOpen={guideOpen} onClose={() => setGuideOpen(false)} />
       </div>
     </div>
   );
