@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Player, Opponent } from '../types';
-import { getPlayers, savePlayer, deletePlayer, getOpponents, saveOpponent, deleteOpponent, generateUUID, getAllDataJSON, importDataJSON } from '../services/dataService';
-import { User, Trash2, Plus, Users, Shield, Download, Upload, Save, AlertTriangle, UserPlus } from 'lucide-react';
+import { getPlayers, savePlayer, deletePlayer, getOpponents, saveOpponent, deleteOpponent, generateUUID, getAllDataJSON, importDataJSON, resyncAllDataToFirebase } from '../services/dataService';
+import { User, Trash2, Plus, Users, Shield, Download, Upload, Save, AlertTriangle, UserPlus, CloudUpload } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
 
 export const Settings: React.FC = () => {
@@ -30,6 +30,7 @@ export const Settings: React.FC = () => {
     // Import State
     const [importStatus, setImportStatus] = useState<string>('');
     const [isImportError, setIsImportError] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -111,6 +112,18 @@ export const Settings: React.FC = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    const handleResync = async () => {
+        if (!confirm("手元の全データをクラウド(Firebase)に強制アップロードします。\nクラウド上の既存データは上書きされますがよろしいですか？")) return;
+        
+        setIsSyncing(true);
+        setImportStatus('クラウド同期中...');
+        setIsImportError(false);
+        
+        const resultMsg = await resyncAllDataToFirebase();
+        setImportStatus(resultMsg);
+        setIsSyncing(false);
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -367,15 +380,26 @@ export const Settings: React.FC = () => {
             <div className="bg-slate-800 text-white p-6 rounded-xl border border-slate-700 shadow-sm space-y-4">
                 <h3 className="font-bold text-lg flex items-center gap-2"><Save size={20}/> データバックアップ・共有</h3>
                 <p className="text-sm text-slate-300">
-                    入力した全データをファイル(.json)として保存・復元できます。<br/>
-                    チームメンバーにデータを共有したい場合、ここでファイルを保存し、LINE等で送付してください。
+                    入力データは端末内に保存されています。クラウド(Firebase)が消えても、ここから再同期やファイル保存が可能です。
                 </p>
                 
                 <div className="flex flex-col md:flex-row gap-4 pt-2">
+                    {/* 1. Cloud Resync */}
+                    <button 
+                        onClick={handleResync} 
+                        disabled={isSyncing}
+                        className="flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-lg shadow hover:bg-indigo-700 flex items-center justify-center gap-2 transition disabled:opacity-50"
+                    >
+                        <CloudUpload size={18}/> 
+                        {isSyncing ? '同期中...' : 'クラウドと再同期 (強制アップロード)'}
+                    </button>
+
+                    {/* 2. File Backup */}
                     <button onClick={handleBackup} className="flex-1 py-3 px-4 bg-white text-team-navy font-bold rounded-lg shadow hover:bg-slate-100 flex items-center justify-center gap-2 transition">
-                        <Download size={18}/> 全データをファイルに保存
+                        <Download size={18}/> ファイルに保存 (Backup)
                     </button>
                     
+                    {/* 3. Restore */}
                     <div className="flex-1 relative">
                         <input 
                             type="file" 
@@ -385,7 +409,7 @@ export const Settings: React.FC = () => {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         />
                         <div className="w-full h-full py-3 px-4 bg-slate-700 text-white font-bold rounded-lg border border-slate-600 hover:bg-slate-600 flex items-center justify-center gap-2 transition pointer-events-none">
-                            <Upload size={18}/> データを復元 (ファイルを選択)
+                            <Upload size={18}/> ファイルから復元
                         </div>
                     </div>
                 </div>

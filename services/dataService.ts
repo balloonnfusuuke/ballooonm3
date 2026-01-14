@@ -1,7 +1,7 @@
 
 import { Player, Opponent, PlateAppearance, GameBatchRecord, BatterStats, PitcherGameRecord, PitcherStats, PitcherPlayRecord } from '../types';
 import { db } from './firebase';
-import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
 
 const STORAGE_KEY_PLAYERS = 'indieball_players';
 const STORAGE_KEY_OPPONENTS = 'indieball_opponents';
@@ -56,6 +56,44 @@ export const updateLiveGameStatus = async (gameId: string, status: any) => {
         }, { merge: true });
     } catch (e) {
         console.error("Failed to sync live status", e);
+    }
+};
+
+// --- EMERGENCY RESTORE: Bulk Upload Local Data to Firebase ---
+export const resyncAllDataToFirebase = async (): Promise<string> => {
+    try {
+        let count = 0;
+        const players = getPlayers();
+        const opponents = getOpponents();
+        const paRecs = getPARecords();
+        const batchRecs = getBatchRecords();
+        const pRecs = getPitcherRecords();
+        const ppRecs = getPitcherPlayRecords();
+
+        // Use batches (limit 500 ops per batch) or Promise.all. 
+        // For simplicity and to avoid batch limits logic complexity here, we use Promise.all in chunks or just parallel.
+        // Given typical usage, Promise.all is okay, but let's be gentle.
+        
+        const uploadCollection = async (name: string, items: any[]) => {
+            const promises = items.map(item => {
+                const sanitized = JSON.parse(JSON.stringify(item));
+                return setDoc(doc(db, name, item.id), sanitized);
+            });
+            await Promise.all(promises);
+            count += items.length;
+        };
+
+        await uploadCollection('players', players);
+        await uploadCollection('opponents', opponents);
+        await uploadCollection('pa_records', paRecs);
+        await uploadCollection('batch_records', batchRecs);
+        await uploadCollection('pitcher_records', pRecs);
+        await uploadCollection('pitcher_play_records', ppRecs);
+
+        return `完了: ${count}件のデータをクラウドに復旧しました。`;
+    } catch (e: any) {
+        console.error("Resync Error:", e);
+        return `エラー: ${e.message}`;
     }
 };
 
