@@ -4,12 +4,13 @@ import { getFirestore } from "firebase/firestore";
 
 // TODO: Firebaseコンソールから取得した設定値に書き換えてください
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyB2eRljzMlQfb5RI26Sw99rYjpG9ww38Bk",
+  authDomain: "ikkyuusokuhou.firebaseapp.com",
+  projectId: "ikkyuusokuhou",
+  storageBucket: "ikkyuusokuhou.firebasestorage.app",
+  messagingSenderId: "192942341354",
+  appId: "1:192942341354:web:30c5e1a7a7338da63b2b93",
+  measurementId: "G-TGNSL1KTM1"
 };
 
 // Initialize Firebase
