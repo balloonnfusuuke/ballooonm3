@@ -48,8 +48,15 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
     multi_r: 0, multi_k: 0, multi_bb: 0, multi_sb: 0, multi_error: 0,
     hr_win_loss: '',
     
+    ab_vs_r: 0, h_vs_r: 0, hr_vs_r: 0, ops_vs_r: 0, avg_vs_r: 0,
+    ab_vs_l: 0, h_vs_l: 0, hr_vs_l: 0, ops_vs_l: 0, avg_vs_l: 0,
+
     spray_data: []
   };
+
+  // Split helpers
+  let obp_num_vs_r = 0, obp_denom_vs_r = 0, tb_vs_r = 0;
+  let obp_num_vs_l = 0, obp_denom_vs_l = 0, tb_vs_l = 0;
 
   // --- 1. Aggregation & Game Grouping ---
   const gameMap = new Map<string, {
@@ -88,7 +95,7 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
     const gs = getGameStats(pa.gameId);
     gs.rbi += pa.rbi;
 
-    let isAB = false; let isHit = false;
+    let isAB = false; let isHit = false; let isOnBase = false; let bases = 0;
 
     // Direction Logic
     if (pa.result !== 'SO' && pa.result !== 'BB' && pa.result !== 'HBP' && pa.result !== 'SAC') {
@@ -98,13 +105,13 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
     }
 
     switch (pa.result as any) {
-      case '1B': t.h++; t.ab++; isHit=true; isAB=true; gs.h++; break;
-      case '2B': t.h++; t.double++; t.ab++; isHit=true; isAB=true; gs.h++; break;
-      case '3B': t.h++; t.triple++; t.ab++; isHit=true; isAB=true; gs.h++; break;
-      case 'HR': t.h++; t.hr++; t.ab++; isHit=true; isAB=true; gs.h++; gs.hr++; break;
-      case 'BB': t.bb++; gs.bb++; break;
-      case 'IBB': t.bb++; t.ibb++; gs.bb++; break;
-      case 'HBP': t.hbp++; break;
+      case '1B': t.h++; t.ab++; isHit=true; isAB=true; isOnBase=true; bases=1; gs.h++; break;
+      case '2B': t.h++; t.double++; t.ab++; isHit=true; isAB=true; isOnBase=true; bases=2; gs.h++; break;
+      case '3B': t.h++; t.triple++; t.ab++; isHit=true; isAB=true; isOnBase=true; bases=3; gs.h++; break;
+      case 'HR': t.h++; t.hr++; t.ab++; isHit=true; isAB=true; isOnBase=true; bases=4; gs.h++; gs.hr++; break;
+      case 'BB': t.bb++; gs.bb++; isOnBase=true; break;
+      case 'IBB': t.bb++; t.ibb++; gs.bb++; isOnBase=true; break;
+      case 'HBP': t.hbp++; isOnBase=true; break;
       case 'SO': t.so++; t.ab++; isAB=true; gs.k++; break;
       case 'GO': case 'FO': case 'ROE': case 'FC': t.ab++; isAB=true; break;
       case 'GIDP': t.ab++; t.gidp++; isAB=true; break;
@@ -115,6 +122,27 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
     if ((pa.runner2 || pa.runner3) && isAB) {
       t.risp_ab++;
       if (isHit) t.risp_h++;
+    }
+
+    // Split Stats Logic
+    if (pa.vsHand === 'R') {
+        if (isAB) t.ab_vs_r++;
+        if (isHit) t.h_vs_r++;
+        if (pa.result === 'HR') t.hr_vs_r++;
+        
+        if (isAB || pa.result === 'SF') obp_denom_vs_r++; // AB + SF
+        if (pa.result === 'BB' || pa.result === 'IBB' || pa.result === 'HBP') { obp_denom_vs_r++; obp_num_vs_r++; }
+        if (isHit) obp_num_vs_r++;
+        tb_vs_r += bases;
+    } else if (pa.vsHand === 'L') {
+        if (isAB) t.ab_vs_l++;
+        if (isHit) t.h_vs_l++;
+        if (pa.result === 'HR') t.hr_vs_l++;
+
+        if (isAB || pa.result === 'SF') obp_denom_vs_l++;
+        if (pa.result === 'BB' || pa.result === 'IBB' || pa.result === 'HBP') { obp_denom_vs_l++; obp_num_vs_l++; }
+        if (isHit) obp_num_vs_l++;
+        tb_vs_l += bases;
     }
   });
 
@@ -162,17 +190,25 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
   t.slg = t.ab > 0 ? totalBases / t.ab : 0;
   t.ops = t.obp + t.slg;
 
+  // Split Results
+  t.avg_vs_r = t.ab_vs_r > 0 ? t.h_vs_r / t.ab_vs_r : 0;
+  const obp_vs_r = obp_denom_vs_r > 0 ? obp_num_vs_r / obp_denom_vs_r : 0;
+  const slg_vs_r = t.ab_vs_r > 0 ? tb_vs_r / t.ab_vs_r : 0;
+  t.ops_vs_r = obp_vs_r + slg_vs_r;
+
+  t.avg_vs_l = t.ab_vs_l > 0 ? t.h_vs_l / t.ab_vs_l : 0;
+  const obp_vs_l = obp_denom_vs_l > 0 ? obp_num_vs_l / obp_denom_vs_l : 0;
+  const slg_vs_l = t.ab_vs_l > 0 ? tb_vs_l / t.ab_vs_l : 0;
+  t.ops_vs_l = obp_vs_l + slg_vs_l;
+
+
   // --- 4. Advanced Metrics ---
   t.noi = (t.obp + (t.slg / 3)) * 1000;
   t.gpa = ((t.obp * 1.8) + t.slg) / 4;
   t.iso_p = t.slg - t.avg;
   t.iso_d = t.obp - t.avg;
 
-  // RC (Runs Created) - Switch to Basic RC for stability in small samples
-  // Formula: RC = (A * B) / C
-  // A = H + BB + HBP - CS - GIDP
-  // B = TB + 0.26*(BB + HBP) + 0.52*(SF + SAC) + 0.64*SB
-  // C = AB + BB + HBP + SF + SAC
+  // RC (Runs Created) - Basic RC
   const rcA = t.h + t.bb + t.hbp - t.cs - t.gidp;
   const rcB = totalBases + (0.26 * (t.bb + t.hbp)) + (0.52 * (t.sf + t.sac)) + (0.64 * t.sb);
   const rcC = t.ab + t.bb + t.hbp + t.sf + t.sac; 
@@ -185,7 +221,7 @@ export const calculateBatterStats = (liveRecords: PlateAppearance[], batchRecord
   const totalOuts = t.ab - t.h + t.sac + t.sf + t.cs + t.gidp;
   t.rc27 = totalOuts > 0 ? (t.rc * 27) / totalOuts : (t.rc > 0 ? Infinity : 0);
 
-  // XR (Extrapolated Runs) - Linear Weights
+  // XR
   const xr = (0.50 * singles) + (0.72 * t.double) + (1.04 * t.triple) + (1.44 * t.hr) 
            + (0.34 * (t.bb + t.hbp - t.ibb)) + (0.25 * t.ibb) + (0.18 * t.sb) - (0.32 * t.cs) 
            - (0.09 * (t.ab - t.h - t.so)) - (0.098 * t.so) - (0.37 * t.gidp) + (0.30 * t.sf) + (0.04 * t.sac);
@@ -307,6 +343,9 @@ export const calculatePitcherStats = (
         count_100pitches: 0, count_2digit_h: 0, count_2hr: 0, count_2digit_k: 0, count_5bb: 0,
         stop_win_streak_count: 0, stop_loss_streak_count: 0,
         
+        ab_vs_r: 0, h_vs_r: 0, k_vs_r: 0, baa_vs_r: 0, ops_allowed_vs_r: 0,
+        ab_vs_l: 0, h_vs_l: 0, k_vs_l: 0, baa_vs_l: 0, ops_allowed_vs_l: 0,
+
         spray_data: []
     };
 
@@ -318,6 +357,10 @@ export const calculatePitcherStats = (
     let reliefRuns = 0;
     let reliefOuts = 0;
     let nhbCount = 0;
+
+    // Splits
+    let obp_num_v_r=0, obp_den_v_r=0, tb_v_r=0;
+    let obp_num_v_l=0, obp_den_v_l=0, tb_v_l=0;
 
     // --- 1. Fetch & Aggregate LIVE Play Logs for this Pitcher ---
     const allPlayRecs = getPitcherPlayRecords();
@@ -342,16 +385,23 @@ export const calculatePitcherStats = (
         
         if (p.isOut) g.outs = (g.outs || 0) + 1;
         
+        let isAB = false; let isHit = false; let bases = 0;
+
         if (['1B','2B','3B','HR'].includes(p.result)) {
             g.h = (g.h || 0) + 1;
             g.ab = (g.ab || 0) + 1;
+            isAB = true; isHit = true;
         }
-        if (['GO','FO','SO','GIDP'].includes(p.result)) g.ab = (g.ab || 0) + 1;
-        if (['ROE','FC'].includes(p.result)) g.ab = (g.ab || 0) + 1;
+        if (['GO','FO','SO','GIDP','ROE','FC'].includes(p.result)) {
+            g.ab = (g.ab || 0) + 1;
+            isAB = true;
+        }
 
-        if (p.result === '2B') g.h2 = (g.h2 || 0) + 1;
-        if (p.result === '3B') g.h3 = (g.h3 || 0) + 1;
-        if (p.result === 'HR') g.hr = (g.hr || 0) + 1;
+        if (p.result === '2B') { g.h2 = (g.h2 || 0) + 1; bases=2; }
+        else if (p.result === '3B') { g.h3 = (g.h3 || 0) + 1; bases=3; }
+        else if (p.result === 'HR') { g.hr = (g.hr || 0) + 1; bases=4; }
+        else if (p.result === '1B') { bases=1; }
+
         if (p.result === 'BB' || p.result === 'IBB') g.bb = (g.bb || 0) + 1;
         if (p.result === 'IBB') g.ibb = (g.ibb || 0) + 1;
         if (p.result === 'HBP') g.hbp = (g.hbp || 0) + 1;
@@ -367,6 +417,27 @@ export const calculatePitcherStats = (
         
         if (p.coordX !== undefined && p.coordY !== undefined) {
              g.allowed_spray = [...(g.allowed_spray || []), { x: p.coordX, y: p.coordY, result: p.result }];
+        }
+
+        // Split Stats Aggregation
+        if (p.vsHand === 'R') {
+            if(isAB) t.ab_vs_r++;
+            if(isHit) t.h_vs_r++;
+            if(p.result === 'SO') t.k_vs_r++;
+            
+            if(isAB || p.result==='SF') obp_den_v_r++;
+            if(['BB','IBB','HBP'].includes(p.result)) { obp_den_v_r++; obp_num_v_r++; }
+            if(isHit) obp_num_v_r++;
+            tb_v_r += bases;
+        } else if (p.vsHand === 'L') {
+            if(isAB) t.ab_vs_l++;
+            if(isHit) t.h_vs_l++;
+            if(p.result === 'SO') t.k_vs_l++;
+
+            if(isAB || p.result==='SF') obp_den_v_l++;
+            if(['BB','IBB','HBP'].includes(p.result)) { obp_den_v_l++; obp_num_v_l++; }
+            if(isHit) obp_num_v_l++;
+            tb_v_l += bases;
         }
     });
 
@@ -477,6 +548,18 @@ export const calculatePitcherStats = (
         t.p_ip = t.p_count / innings;
     }
     t.k_bb = t.bb > 0 ? t.k / t.bb : t.k;
+
+    // Split Calc
+    t.baa_vs_r = t.ab_vs_r > 0 ? t.h_vs_r / t.ab_vs_r : 0;
+    const obp_allowed_v_r = obp_den_v_r > 0 ? obp_num_v_r / obp_den_v_r : 0;
+    const slg_allowed_v_r = t.ab_vs_r > 0 ? tb_v_r / t.ab_vs_r : 0;
+    t.ops_allowed_vs_r = obp_allowed_v_r + slg_allowed_v_r;
+
+    t.baa_vs_l = t.ab_vs_l > 0 ? t.h_vs_l / t.ab_vs_l : 0;
+    const obp_allowed_v_l = obp_den_v_l > 0 ? obp_num_v_l / obp_den_v_l : 0;
+    const slg_allowed_v_l = t.ab_vs_l > 0 ? tb_v_l / t.ab_vs_l : 0;
+    t.ops_allowed_vs_l = obp_allowed_v_l + slg_allowed_v_l;
+
 
     // Advanced Rates
     if (startCount > 0) {

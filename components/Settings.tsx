@@ -18,6 +18,8 @@ export const Settings: React.FC = () => {
     const [pNumber, setPNumber] = useState('');
     const [pPosition, setPPosition] = useState('');
     const [pType, setPType] = useState<'batter'|'pitcher'|'two-way'>('batter');
+    const [pThrows, setPThrows] = useState<'R'|'L'>('R');
+    const [pBats, setPBats] = useState<'R'|'L'|'S'>('R');
 
     // Opponent Form State
     const [oName, setOName] = useState('');
@@ -51,10 +53,14 @@ export const Settings: React.FC = () => {
             number: pNumber,
             position: pPosition || '', // Allow empty or free text
             type: pType,
+            throws: pThrows,
+            bats: pBats,
             teamId: teamId // Undefined for My Team
         };
         savePlayer(newPlayer);
         setPName(''); setPNumber(''); setPPosition('');
+        // Reset defaults
+        setPThrows('R'); setPBats('R');
         loadData();
     };
 
@@ -203,6 +209,34 @@ export const Settings: React.FC = () => {
                                 <option value="two-way">二刀流</option>
                             </select>
                         </div>
+                        
+                        {/* New: Throws / Bats */}
+                        <div className="col-span-6 md:col-span-3">
+                            <label className="text-xs font-bold text-slate-500">投</label>
+                            <div className="flex gap-2">
+                                <label className="flex items-center text-sm cursor-pointer">
+                                    <input type="radio" name="throws" value="R" checked={pThrows==='R'} onChange={()=>setPThrows('R')} className="mr-1"/>右
+                                </label>
+                                <label className="flex items-center text-sm cursor-pointer">
+                                    <input type="radio" name="throws" value="L" checked={pThrows==='L'} onChange={()=>setPThrows('L')} className="mr-1"/>左
+                                </label>
+                            </div>
+                        </div>
+                        <div className="col-span-6 md:col-span-3">
+                            <label className="text-xs font-bold text-slate-500">打</label>
+                            <div className="flex gap-2">
+                                <label className="flex items-center text-sm cursor-pointer">
+                                    <input type="radio" name="bats" value="R" checked={pBats==='R'} onChange={()=>setPBats('R')} className="mr-1"/>右
+                                </label>
+                                <label className="flex items-center text-sm cursor-pointer">
+                                    <input type="radio" name="bats" value="L" checked={pBats==='L'} onChange={()=>setPBats('L')} className="mr-1"/>左
+                                </label>
+                                <label className="flex items-center text-sm cursor-pointer">
+                                    <input type="radio" name="bats" value="S" checked={pBats==='S'} onChange={()=>setPBats('S')} className="mr-1"/>両
+                                </label>
+                            </div>
+                        </div>
+
                         <div className="col-span-12 mt-2">
                             <button onClick={() => handleAddPlayer(undefined)} className="w-full py-2 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700 flex items-center justify-center gap-2">
                                 <Plus size={16}/> 自チーム選手を追加
@@ -222,6 +256,7 @@ export const Settings: React.FC = () => {
                                             {p.position ? p.position : '守備未登録'} 
                                             <span className="mx-1">/</span> 
                                             {p.type==='batter'?'野手':p.type==='pitcher'?'投手':'二刀流'}
+                                            <span className="ml-2 bg-slate-100 px-1 rounded text-[10px] border">{p.throws}投{p.bats}打</span>
                                         </div>
                                     </div>
                                 </div>
@@ -282,8 +317,19 @@ export const Settings: React.FC = () => {
                                         <label className="text-xs font-bold text-slate-500">背番号</label>
                                         <input type="text" value={pNumber} onChange={e=>setPNumber(e.target.value)} placeholder="#" className="w-full p-2 border rounded text-sm"/>
                                     </div>
-                                    <div className="col-span-4 mt-auto">
-                                        <button onClick={() => handleAddPlayer(selectedOpponentId)} className="w-full py-2 bg-red-600 text-white font-bold rounded shadow hover:bg-red-700 flex items-center justify-center gap-2 h-[38px] mt-4">
+                                    <div className="col-span-4">
+                                        <label className="text-xs font-bold text-slate-500">投/打</label>
+                                        <div className="flex gap-2 text-xs">
+                                            <select value={pThrows} onChange={e=>setPThrows(e.target.value as any)} className="border rounded p-1">
+                                                <option value="R">右投</option><option value="L">左投</option>
+                                            </select>
+                                            <select value={pBats} onChange={e=>setPBats(e.target.value as any)} className="border rounded p-1">
+                                                <option value="R">右打</option><option value="L">左打</option><option value="S">両打</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="col-span-12 mt-2">
+                                        <button onClick={() => handleAddPlayer(selectedOpponentId)} className="w-full py-2 bg-red-600 text-white font-bold rounded shadow hover:bg-red-700 flex items-center justify-center gap-2">
                                             <Plus size={16}/> 追加
                                         </button>
                                     </div>
@@ -298,6 +344,7 @@ export const Settings: React.FC = () => {
                                                 <div className="flex items-center gap-3">
                                                     <span className="font-mono font-bold bg-slate-200 w-8 h-8 flex items-center justify-center rounded-full text-slate-600 text-sm">{p.number}</span>
                                                     <div className="font-bold text-sm text-team-navy">{p.name}</div>
+                                                    <span className="text-xs text-slate-400 bg-white border px-1 rounded">{p.throws}投{p.bats}打</span>
                                                 </div>
                                                 <button onClick={()=>handleDeletePlayerClick(p)} className="text-slate-300 hover:text-red-500 p-2">
                                                     <Trash2 size={16}/>

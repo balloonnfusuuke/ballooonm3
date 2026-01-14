@@ -23,7 +23,11 @@ interface RunnerState {
 
 const SESSION_STORAGE_KEY = 'indieball_live_session';
 
-export const InputForm: React.FC = () => {
+interface InputFormProps {
+    isVisible: boolean;
+}
+
+export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
   const [tab, setTab] = useState<'live' | 'batch_batter' | 'batch_pitcher'>('live');
   
   const [players, setPlayers] = useState<Player[]>([]);
@@ -39,13 +43,15 @@ export const InputForm: React.FC = () => {
   // Lineup IDs
   const [myLineup, setMyLineup] = useState<string[]>(Array(9).fill('')); 
   const [opponentLineupIds, setOpponentLineupIds] = useState<string[]>(Array(9).fill('')); 
-  // NEW: Lineup Positions (Dynamic)
   const [myLineupPositions, setMyLineupPositions] = useState<string[]>(Array(9).fill(''));
   const [opponentLineupPositions, setOpponentLineupPositions] = useState<string[]>(Array(9).fill(''));
 
   const [currentBatterIndex, setCurrentBatterIndex] = useState<number>(0); 
   const [currentOppBatterIndex, setCurrentOppBatterIndex] = useState<number>(0);
-  const [selectedPitcherId, setSelectedPitcherId] = useState<string>(''); 
+  
+  // Pitcher Selection
+  const [selectedPitcherId, setSelectedPitcherId] = useState<string>(''); // My Team Pitcher
+  const [currentOppPitcherId, setCurrentOppPitcherId] = useState<string>(''); // Opponent Pitcher ID (or generic)
 
   const [newOppPlayerName, setNewOppPlayerName] = useState('');
   const [newOppPlayerNumber, setNewOppPlayerNumber] = useState('');
@@ -88,7 +94,7 @@ export const InputForm: React.FC = () => {
   const [myLineupModalOpen, setMyLineupModalOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
-  const [resetModalOpen, setResetModalOpen] = useState(false); // New state for reset dialog
+  const [resetModalOpen, setResetModalOpen] = useState(false); 
   
   const [reviewModal, setReviewModal] = useState<{
       isOpen: boolean;
@@ -119,10 +125,12 @@ export const InputForm: React.FC = () => {
   const computedOuts = ((pStats.ip||0) * 3) + (pStats.outs_frac||0);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
+  // Initial Load
   useEffect(() => {
     setPlayers(getPlayers());
     setOpponents(getOpponents());
     
+    // Restore Session
     const saved = localStorage.getItem(SESSION_STORAGE_KEY);
     if (saved) {
         try {
@@ -132,7 +140,6 @@ export const InputForm: React.FC = () => {
             if (s.currentOpponentId) setCurrentOpponentId(s.currentOpponentId);
             if (s.myLineup) setMyLineup(s.myLineup);
             if (s.opponentLineupIds) setOpponentLineupIds(s.opponentLineupIds);
-            // Restore positions if available, else blank/default
             if (s.myLineupPositions) setMyLineupPositions(s.myLineupPositions);
             if (s.opponentLineupPositions) setOpponentLineupPositions(s.opponentLineupPositions);
             
@@ -142,6 +149,7 @@ export const InputForm: React.FC = () => {
             if (s.currentBatterIndex !== undefined) setCurrentBatterIndex(s.currentBatterIndex);
             if (s.currentOppBatterIndex !== undefined) setCurrentOppBatterIndex(s.currentOppBatterIndex);
             if (s.selectedPitcherId) setSelectedPitcherId(s.selectedPitcherId);
+            if (s.currentOppPitcherId) setCurrentOppPitcherId(s.currentOppPitcherId);
             
             if (s.liveRbi) setLiveRbi(s.liveRbi);
             if (s.liveRunScored) setLiveRunScored(s.liveRunScored);
@@ -154,6 +162,14 @@ export const InputForm: React.FC = () => {
     }
   }, []);
 
+  // Reload data when becoming visible
+  useEffect(() => {
+      if (isVisible) {
+          setPlayers(getPlayers());
+          setOpponents(getOpponents());
+      }
+  }, [isVisible]);
+
   useEffect(() => {
       if (gamePhase === 'playing' || (gamePhase === 'setup' && opponent)) {
           const session = {
@@ -161,14 +177,14 @@ export const InputForm: React.FC = () => {
               myLineup, opponentLineupIds,
               myLineupPositions, opponentLineupPositions,
               gamePhase, gameState,
-              currentBatterIndex, currentOppBatterIndex, selectedPitcherId,
+              currentBatterIndex, currentOppBatterIndex, selectedPitcherId, currentOppPitcherId,
               liveRbi, liveRunScored, liveER
           };
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
       }
   }, [
       gamePhase, date, opponent, currentOpponentId, myLineup, opponentLineupIds, myLineupPositions, opponentLineupPositions,
-      gameState, currentBatterIndex, currentOppBatterIndex, selectedPitcherId,
+      gameState, currentBatterIndex, currentOppBatterIndex, selectedPitcherId, currentOppPitcherId,
       liveRbi, liveRunScored, liveER
   ]);
 
@@ -296,7 +312,7 @@ export const InputForm: React.FC = () => {
       const p = players.find(pl => pl.id === newPlayerId);
       if (p) {
           const newPos = [...myLineupPositions];
-          newPos[currentBatterIndex] = 'PH'; // Default to PH for pinch hitter
+          newPos[currentBatterIndex] = 'PH';
           setMyLineupPositions(newPos);
       }
       setPhModalOpen(false);
@@ -320,7 +336,7 @@ export const InputForm: React.FC = () => {
 
   const handleQuickAddOpponentPlayer = () => {
       if (!newOppPlayerName || !currentOpponentId) return;
-      const newP: Player = { id: generateUUID(), name: newOppPlayerName, number: newOppPlayerNumber, position: 'Unk', type: 'batter', teamId: currentOpponentId };
+      const newP: Player = { id: generateUUID(), name: newOppPlayerName, number: newOppPlayerNumber, position: 'Unk', type: 'batter', teamId: currentOpponentId, throws: 'R', bats: 'R' };
       savePlayer(newP); setPlayers(getPlayers()); setNewOppPlayerName(''); setNewOppPlayerNumber(''); showMessage('success', '選手を追加しました');
   };
   const getPlayerMiniStats = (playerId: string) => {
@@ -367,7 +383,7 @@ export const InputForm: React.FC = () => {
       if (res === 'HR') batterDest = 'Home'; 
       if (res === 'BB' || res === 'IBB' || res === 'HBP') batterDest = '1B'; 
       if (res === 'SAC' || res === 'SF') batterDest = 'Out';
-      if (res === 'GIDP') batterDest = 'Out'; // GIDP batter is out
+      if (res === 'GIDP') batterDest = 'Out'; 
 
       if (batterDest !== 'None') { runners.push({ originalBase: 'batter', playerId: batterId, playerName: batterName, dest: batterDest, isOut: batterDest === 'Out', isRun: batterDest === 'Home' }); }
       
@@ -377,11 +393,9 @@ export const InputForm: React.FC = () => {
               const baseNum = base === 'runner1' ? 1 : base === 'runner2' ? 2 : 3; 
               
               if (res === 'GIDP') {
-                  // For GIDP, default behavior: Force out lead runner
-                  if (base === 'runner1') dest = 'Out'; // Force at 2nd
-                  else if (base === 'runner2' && gameState.runner1) dest = '3B'; // Safe?
-                  else if (base === 'runner2') dest = 'Out'; // If only R2, weird GIDP but assume out
-                  else if (base === 'runner3') dest = 'Home'; // R3 Scores?
+                  if (base === 'runner1') dest = 'Out'; 
+                  else if (base === 'runner2') dest = 'Out'; 
+                  else if (base === 'runner3') dest = 'Home'; 
                   else dest = base === 'runner1'?'1B':base==='runner2'?'2B':'3B';
               } else {
                   let targetNum = baseNum; 
@@ -411,28 +425,77 @@ export const InputForm: React.FC = () => {
   };
   const handleReviewChange = (idx: number, field: keyof RunnerState, value: any) => { setReviewModal(prev => { const nextRunners = [...prev.runners]; nextRunners[idx] = { ...nextRunners[idx], [field]: value }; if (field === 'dest') { if (value === 'Out') { nextRunners[idx].isOut = true; nextRunners[idx].isRun = false; } else if (value === 'Home') { nextRunners[idx].isOut = false; nextRunners[idx].isRun = true; } else { nextRunners[idx].isOut = false; nextRunners[idx].isRun = false; } } return { ...prev, runners: nextRunners }; }); };
   const confirmReview = () => { if (!reviewModal.result) return; let addedRuns = 0; let addedOuts = 0; const nextGameState = { ...gameState }; nextGameState.runner1 = false; nextGameState.runner1Id = null; nextGameState.runner2 = false; nextGameState.runner2Id = null; nextGameState.runner3 = false; nextGameState.runner3Id = null; reviewModal.runners.forEach(r => { if (r.isOut) { addedOuts++; } else if (r.dest === 'Home') { addedRuns++; } else { if (r.dest === '1B') { nextGameState.runner1 = true; nextGameState.runner1Id = r.playerId; } if (r.dest === '2B') { nextGameState.runner2 = true; nextGameState.runner2Id = r.playerId; } if (r.dest === '3B') { nextGameState.runner3 = true; nextGameState.runner3Id = r.playerId; } } }); nextGameState.outs += addedOuts; commitPlay(reviewModal.result, nextGameState, addedRuns); setReviewModal({ isOpen: false, result: null, runners: [] }); };
-  const commitPlay = (res: ResultType, nextState: typeof gameState, runsFromRunners: number) => { const gameId = `${date}-${opponent}`; let currentPlayerId = '', currentPlayerName = ''; if (gameState.currentSide === 'Attack') { const b = getBatterInLineup(0); if(b) { currentPlayerId=b.id; currentPlayerName=b.name; } } else { const b = getOpponentBatter(0); if(b) { currentPlayerId=b.id; currentPlayerName=b.name; } } if (gameState.currentSide === 'Defense') { setLiveRunScored(prev => prev + runsFromRunners); } else { if (runsFromRunners > 0) { setLiveRbi(prev => prev + runsFromRunners); } } const rbiToSave = (gameState.currentSide === 'Attack' && runsFromRunners > 0) ? liveRbi + runsFromRunners : liveRbi; const runsToSave = (gameState.currentSide === 'Defense') ? liveRunScored + runsFromRunners : liveRunScored; 
-  if (gameState.currentSide === 'Attack') { 
-      const record: PlateAppearance = { 
-          id: generateUUID(), gameId, date, opponent, playerId: currentPlayerId, playerName: currentPlayerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', 
-          runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, // Use PRE-PLAY state for stats
-          result: res, direction: selectedDirection || 0, rbi: rbiToSave, isSteal: false, coordX: ballCoord?.x, coordY: ballCoord?.y 
-      }; 
-      savePARecord(record); showMessage('success', `【攻撃】${currentPlayerName}: ${res}`); 
-      if (!['XI', 'WP', 'BK'].includes(res)) setCurrentBatterIndex(prev => (prev + 1) % 9); 
-  } else { 
-      const record: PitcherPlayRecord = { id: generateUUID(), gameId, date, opponent, playerId: selectedPitcherId, playerName: players.find(p=>p.id===selectedPitcherId)?.name||'Unknown', inning: gameState.inning, result: res, coordX: ballCoord?.x, coordY: ballCoord?.y, isOut: ['SO','GO','FO','SAC','SF','GIDP'].includes(res), runScored: runsToSave, earnedRun: liveER }; 
-      savePitcherPlayRecord(record); 
-      if (currentPlayerId && !currentPlayerId.startsWith('unknown')) { 
-          const oppRecord: PlateAppearance = { 
-              id: generateUUID(), gameId, date, opponent: 'My Team', playerId: currentPlayerId, playerName: currentPlayerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', 
-              runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, // Use PRE-PLAY state for stats
-              result: res, direction: selectedDirection || 0, rbi: runsToSave, isSteal: false, coordX: ballCoord?.x, coordY: ballCoord?.y 
+  const commitPlay = (res: ResultType, nextState: typeof gameState, runsFromRunners: number) => { 
+      const gameId = `${date}-${opponent}`; 
+      let currentPlayerId = '', currentPlayerName = ''; 
+      
+      // Determine Player ID
+      if (gameState.currentSide === 'Attack') { 
+          const b = getBatterInLineup(0); 
+          if(b) { currentPlayerId=b.id; currentPlayerName=b.name; } 
+      } else { 
+          const b = getOpponentBatter(0); 
+          if(b) { currentPlayerId=b.id; currentPlayerName=b.name; } 
+      } 
+      
+      // Handle Score State
+      if (gameState.currentSide === 'Defense') { setLiveRunScored(prev => prev + runsFromRunners); } 
+      else { if (runsFromRunners > 0) { setLiveRbi(prev => prev + runsFromRunners); } } 
+      
+      const rbiToSave = (gameState.currentSide === 'Attack' && runsFromRunners > 0) ? liveRbi + runsFromRunners : liveRbi; 
+      const runsToSave = (gameState.currentSide === 'Defense') ? liveRunScored + runsFromRunners : liveRunScored; 
+  
+      if (gameState.currentSide === 'Attack') { 
+          // Detect Opponent Pitcher Hand (for batter split stats)
+          let vsHand: 'R' | 'L' | undefined = undefined;
+          if (currentOppPitcherId) {
+              const oppP = players.find(p => p.id === currentOppPitcherId);
+              if (oppP) vsHand = oppP.throws;
+          }
+          if (!vsHand) vsHand = 'R'; // Default to Righty if unknown
+
+          const record: PlateAppearance = { 
+              id: generateUUID(), gameId, date, opponent, playerId: currentPlayerId, playerName: currentPlayerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', 
+              runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, 
+              result: res, direction: selectedDirection || 0, rbi: rbiToSave, isSteal: false, coordX: ballCoord?.x, coordY: ballCoord?.y,
+              vsHand: vsHand // Saved handedness of opponent pitcher
           }; 
-          savePARecord(oppRecord); 
-      } showMessage('success', `【守備】結果記録`); 
-      if (!['XI', 'WP', 'BK'].includes(res)) setCurrentOppBatterIndex(prev => (prev + 1) % 9); 
-  } if (nextState.outs >= 3) { setGameState(nextState); setTimeout(() => handleChangeSide(), 500); } else { setGameState(nextState); } setSelectedResult(null); setSelectedDirection(0); setLiveRbi(0); setLiveRunScored(0); setLiveER(0); setBallCoord(null); };
+          savePARecord(record); showMessage('success', `【攻撃】${currentPlayerName}: ${res}`); 
+          if (!['XI', 'WP', 'BK'].includes(res)) setCurrentBatterIndex(prev => (prev + 1) % 9); 
+      } else { 
+          // Detect Opponent Batter Hand (for pitcher split stats)
+          // Logic: If Switch, check My Pitcher Hand.
+          let vsHand: 'R' | 'L' | undefined = undefined;
+          const oppBatter = getOpponentBatter(0);
+          const myPitcher = players.find(p => p.id === selectedPitcherId);
+          
+          if (oppBatter) {
+              if (oppBatter.bats === 'S') {
+                  // Switch Hitter bats opposite to pitcher
+                  if (myPitcher) {
+                      vsHand = myPitcher.throws === 'R' ? 'L' : 'R';
+                  } else {
+                      vsHand = 'L'; // Default if my pitcher unknown (batting left vs unknown righty)
+                  }
+              } else {
+                  vsHand = oppBatter.bats as 'R' | 'L';
+              }
+          }
+          if (!vsHand) vsHand = 'R';
+
+          const record: PitcherPlayRecord = { id: generateUUID(), gameId, date, opponent, playerId: selectedPitcherId, playerName: players.find(p=>p.id===selectedPitcherId)?.name||'Unknown', inning: gameState.inning, result: res, coordX: ballCoord?.x, coordY: ballCoord?.y, isOut: ['SO','GO','FO','SAC','SF','GIDP'].includes(res), runScored: runsToSave, earnedRun: liveER, vsHand: vsHand }; 
+          savePitcherPlayRecord(record); 
+          if (currentPlayerId && !currentPlayerId.startsWith('unknown')) { 
+              const oppRecord: PlateAppearance = { 
+                  id: generateUUID(), gameId, date, opponent: 'My Team', playerId: currentPlayerId, playerName: currentPlayerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', 
+                  runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, 
+                  result: res, direction: selectedDirection || 0, rbi: runsToSave, isSteal: false, coordX: ballCoord?.x, coordY: ballCoord?.y,
+                  vsHand: myPitcher?.throws || 'R' // Opponent stats vs Me
+              }; 
+              savePARecord(oppRecord); 
+          } showMessage('success', `【守備】結果記録`); 
+          if (!['XI', 'WP', 'BK'].includes(res)) setCurrentOppBatterIndex(prev => (prev + 1) % 9); 
+      } if (nextState.outs >= 3) { setGameState(nextState); setTimeout(() => handleChangeSide(), 500); } else { setGameState(nextState); } setSelectedResult(null); setSelectedDirection(0); setLiveRbi(0); setLiveRunScored(0); setLiveER(0); setBallCoord(null); };
   const handleLiveSubmit = () => { if (!validateCommon()) return; if (!selectedResult) { showMessage('error', '結果を選択してください'); return; } const triggersReview = ['1B', '2B', '3B', 'HR', 'ROE', 'FC', 'SF', 'SAC', 'GIDP'].includes(selectedResult); if (triggersReview) { openReviewModal(selectedResult); } else { let nextOuts = gameState.outs; const isOut = ['SO', 'GO', 'FO', 'SAC', 'SF', 'GIDP'].includes(selectedResult); if (isOut) nextOuts++; const nextState = { ...gameState, outs: nextOuts }; if (['BB', 'IBB', 'HBP'].includes(selectedResult)) { let currentPlayerId = gameState.currentSide === 'Attack' ? getBatterInLineup(0)?.id : getOpponentBatter(0)?.id; if (currentPlayerId) { if (nextState.runner1 && nextState.runner2 && nextState.runner3) { /* ... */ } else if (nextState.runner1 && nextState.runner2) { nextState.runner3 = true; nextState.runner3Id = nextState.runner2Id; nextState.runner2 = true; nextState.runner2Id = nextState.runner1Id; } else if (nextState.runner1) { nextState.runner2 = true; nextState.runner2Id = nextState.runner1Id; } nextState.runner1 = true; nextState.runner1Id = currentPlayerId; } } commitPlay(selectedResult, nextState, 0); } };
   const handleFieldClick = (e: React.MouseEvent<SVGSVGElement, MouseEvent>) => { const svg = e.currentTarget; const rect = svg.getBoundingClientRect(); const x = ((e.clientX - rect.left) / rect.width) * 100; const y = ((e.clientY - rect.top) / rect.height) * 100; if (tab === 'live') { setBallCoord({ x, y }); if (gameState.currentSide === 'Attack') { if (x < 35) setSelectedDirection(7); else if (x > 65) setSelectedDirection(9); else setSelectedDirection(8); } } else if (tab === 'batch_pitcher') { const newSpray = { x, y, result: pitcherBatchSprayType }; setPStats(prev => ({ ...prev, allowed_spray: [...(prev.allowed_spray||[]), newSpray], h: (prev.h||0) + (['1B','2B','3B','HR'].includes(pitcherBatchSprayType) ? 1 : 0) })); } };
   const Counter = ({ label, val, setVal, colorClass="bg-slate-100", step=1 }: any) => ( <div className="flex flex-col items-center bg-white p-2 rounded border border-slate-200 shadow-sm min-w-[70px]"> <span className="text-[10px] text-slate-500 font-bold mb-1 whitespace-nowrap">{label}</span> <div className="flex items-center gap-1"> <button onClick={() => setVal(Math.max(0, (val||0) - step))} className={`w-6 h-6 rounded flex items-center justify-center ${colorClass}`}><Minus size={12}/></button> <input type="number" min="0" value={val||0} onChange={(e) => setVal(parseInt(e.target.value)||0)} onFocus={(e)=>e.target.select()} className="w-10 text-center font-bold outline-none bg-transparent text-sm" /> <button onClick={() => setVal((val||0) + step)} className={`w-6 h-6 rounded flex items-center justify-center ${colorClass}`}><Plus size={12}/></button> </div> </div> );
@@ -443,6 +506,7 @@ export const InputForm: React.FC = () => {
   const handlePitcherBatchUndoSpray = () => { setPStats(p => ({...p, allowed_spray: (p.allowed_spray||[]).slice(0,-1) })); };
   const PitcherSprayButton = ({ res, label, type='hit' }: {res: any, label: string, type?: 'hit'|'out'}) => { return <button onClick={()=>setPitcherBatchSprayType(res)} className={`flex-1 py-1 rounded font-bold text-xs border transition ${pitcherBatchSprayType===res ? (type==='hit'?'bg-team-red text-white':'bg-blue-600 text-white') : 'bg-white text-slate-500'}`}>{label}</button> };
   const getGameLogText = () => { if (!date || !opponent) return "試合情報がありません"; const gameId = `${date}-${opponent}`; const paRecs = getPARecords().filter(r => (r.gameId === gameId || (r.date === date && r.opponent === opponent)) && r.opponent !== 'My Team'); const pRecs = getPitcherPlayRecords().filter(r => r.gameId === gameId || (r.date === date && r.opponent === opponent)); const maxInning = Math.max( ...paRecs.map(r => r.inning), ...pRecs.map(r => r.inning), 0 ); let log = `=== 試合経過速報 ===\n日付: ${date}\n相手: ${opponent}\n\n`; for (let i = 1; i <= maxInning; i++) { log += `--- ${i}回 ---\n`; const innPa = paRecs.filter(r => r.inning === i); const innP = pRecs.filter(r => r.inning === i); const isAttackTop = innPa.length > 0 ? innPa[0].isTop : null; if (innPa.length > 0) { log += `[攻撃] (${isAttackTop ? '表' : '裏'})\n`; innPa.forEach(r => { log += `  ${r.playerName}: ${r.result} ${r.rbi > 0 ? `(${r.rbi}打点)` : ''} ${r.isSteal ? '(盗塁)' : ''}\n`; }); } if (innP.length > 0) { log += `[守備] (${isAttackTop === true ? '裏' : isAttackTop === false ? '表' : '?'})\n`; innP.forEach(r => { log += `  投手 ${r.playerName}: ${r.result} ${r.runScored > 0 ? `(失点${r.runScored})` : ''}\n`; }); } log += "\n"; } const myScore = paRecs.reduce((sum, r) => sum + r.rbi, 0); const oppScore = pRecs.reduce((sum, r) => sum + (r.runScored || 0), 0); log += `[スコア] 自 ${myScore} - ${oppScore} 相手\n`; return log; };
+  // ... generateSNSPost and others unchanged ...
   const generateSNSPost = () => {
       const gameId = `${date}-${opponent}`;
       const paRecs = getPARecords().filter(r => (r.gameId === gameId || (r.date === date && r.opponent === opponent)) && r.opponent !== 'My Team');
@@ -454,8 +518,6 @@ export const InputForm: React.FC = () => {
       const lose = myScore < oppScore;
       const resultStr = win ? "Win!" : lose ? "Lose..." : "Draw";
 
-      // Hero Selection (Simple Heuristic)
-      // Batters: Points = Hit(1) + 2B(2) + 3B(3) + HR(4) + RBI(1.5)
       const batterScores = new Map<string, {name: string, score: number, h:number, rbi:number, hr:number}>();
       paRecs.forEach(r => {
           if (!batterScores.has(r.playerId)) batterScores.set(r.playerId, {name: r.playerName, score:0, h:0, rbi:0, hr:0});
@@ -463,18 +525,10 @@ export const InputForm: React.FC = () => {
           if (['1B','2B','3B','HR'].includes(r.result)) b.h++;
           if (r.result === 'HR') b.hr++;
           b.rbi += r.rbi;
-          
-          let pts = 0;
-          if(r.result==='1B') pts+=1;
-          if(r.result==='2B') pts+=2;
-          if(r.result==='3B') pts+=3;
-          if(r.result==='HR') pts+=4;
-          pts += r.rbi * 1.5;
-          b.score += pts;
+          let pts = 0; if(r.result==='1B') pts+=1; if(r.result==='2B') pts+=2; if(r.result==='3B') pts+=3; if(r.result==='HR') pts+=4; pts += r.rbi * 1.5; b.score += pts;
       });
       const topBatter = Array.from(batterScores.values()).sort((a,b) => b.score - a.score)[0];
 
-      // Pitcher: Winning team -> Best pitcher (Most outs, least runs)
       const pitcherScores = new Map<string, {name:string, outs:number, r:number, k:number}>();
       pRecs.forEach(r => {
           if (!pitcherScores.has(r.playerId)) pitcherScores.set(r.playerId, {name: r.playerName, outs:0, r:0, k:0});
@@ -483,36 +537,19 @@ export const InputForm: React.FC = () => {
           if (['SO'].includes(r.result)) p.k++;
           p.r += (r.runScored || 0);
       });
-      const topPitcher = Array.from(pitcherScores.values()).sort((a,b) => {
-          if (a.r !== b.r) return a.r - b.r; // Less runs better
-          return b.outs - a.outs; // More outs better
-      })[0];
+      const topPitcher = Array.from(pitcherScores.values()).sort((a,b) => { if (a.r !== b.r) return a.r - b.r; return b.outs - a.outs; })[0];
 
       let heroStr = "";
       if (win) {
-          if (topBatter && topBatter.score >= 2) { // Minimum threshold
-              heroStr += `${topBatter.name} (${topBatter.h}安打 ${topBatter.rbi}打点${topBatter.hr>0 ? ` ${topBatter.hr}HR` : ''})\n`;
-          }
-          if (topPitcher) {
-              const ip = Math.floor(topPitcher.outs/3) + (topPitcher.outs%3 === 1 ? ".1" : topPitcher.outs%3 === 2 ? ".2" : "");
-              heroStr += `${topPitcher.name} (${ip}回 ${topPitcher.r}失点 ${topPitcher.k}奪三振)\n`;
-          }
-      } else {
-          // Even if lost, show good batter
-          if (topBatter && topBatter.score >= 2) {
-              heroStr += `${topBatter.name} (${topBatter.h}安打 ${topBatter.rbi}打点)\n`;
-          } else {
-              heroStr += "なし\n";
-          }
-      }
-
+          if (topBatter && topBatter.score >= 2) { heroStr += `${topBatter.name} (${topBatter.h}安打 ${topBatter.rbi}打点${topBatter.hr>0 ? ` ${topBatter.hr}HR` : ''})\n`; }
+          if (topPitcher) { const ip = Math.floor(topPitcher.outs/3) + (topPitcher.outs%3 === 1 ? ".1" : topPitcher.outs%3 === 2 ? ".2" : ""); heroStr += `${topPitcher.name} (${ip}回 ${topPitcher.r}失点 ${topPitcher.k}奪三振)\n`; }
+      } else { if (topBatter && topBatter.score >= 2) { heroStr += `${topBatter.name} (${topBatter.h}安打 ${topBatter.rbi}打点)\n`; } else { heroStr += "なし\n"; } }
       return `【試合結果】\n${date} vs ${opponent}\n自チーム ${myScore} - ${oppScore} 相手\n${resultStr}\n\n【本日のヒーロー】\n${heroStr}\n#IndieBall #草野球 #試合結果`;
   };
   const copyToClipboard = (text?: string) => { const txt = text || getGameLogText(); if (navigator && navigator.clipboard) { navigator.clipboard.writeText(txt).then(() => { showMessage('success', 'コピーしました'); }).catch(() => { showMessage('error', 'コピーに失敗しました'); }); } else { showMessage('error', 'このブラウザではコピー機能が使用できません'); } };
   const downloadLogText = () => { const text = getGameLogText(); const blob = new Blob([text], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `gamelog_${date}_${opponent}.txt`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
   const downloadLogCSV = () => { let csv = '\uFEFFInning,Side,Player,Result,Detail\n'; const gameId = `${date}-${opponent}`; const paRecs = getPARecords().filter(r => (r.gameId === gameId || (r.date === date && r.opponent === opponent)) && r.opponent !== 'My Team'); const pRecs = getPitcherPlayRecords().filter(r => r.gameId === gameId || (r.date === date && r.opponent === opponent)); const maxInning = Math.max( ...paRecs.map(r => r.inning), ...pRecs.map(r => r.inning), 0 ); for (let i = 1; i <= maxInning; i++) { const innPa = paRecs.filter(r => r.inning === i); const innP = pRecs.filter(r => r.inning === i); innPa.forEach(r => { csv += `${i},${r.isTop?'Top':'Bot'},"${r.playerName}",${r.result},${r.rbi>0?`RBI${r.rbi}`:''}${r.isSteal?'SB':''}\n`; }); innP.forEach(r => { csv += `${i},Defense,"P ${r.playerName}",${r.result},${r.runScored>0?`Runs${r.runScored}`:''}\n`; }); } const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `gamelog_${date}_${opponent}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
 
-  // ... (JSX render unchanged except Log Modal content)
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-20">
       {/* Top Controls ... */}
@@ -652,7 +689,7 @@ export const InputForm: React.FC = () => {
                  </div>
              </div>
 
-             {/* Player Select Area (Unchanged) */}
+             {/* Player Select Area */}
              {gameState.currentSide === 'Attack' ? (
                  <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3 relative">
                      <div className="flex justify-between text-xs text-slate-400 font-bold px-1"><span>打順: {currentBatterIndex + 1}番</span><span>Next: {getBatterInLineup(1)?.name || '未定'}</span></div>
@@ -666,7 +703,18 @@ export const InputForm: React.FC = () => {
                          </div>
                          <button onClick={() => setCurrentBatterIndex(prev => (prev + 1) % 9)} className="px-3 bg-slate-100 rounded-lg text-slate-400 hover:bg-slate-200"><RotateCw size={16}/></button>
                      </div>
-                     <button onClick={() => setPhModalOpen(true)} className="w-full py-2 border-2 border-slate-200 text-slate-500 font-bold rounded-lg hover:bg-slate-50 text-xs flex items-center justify-center gap-2"><Users size={14}/> 選手交代 / 代打 (PH)</button>
+                     <button onClick={() => setPhModalOpen(true)} className="w-full py-2 border-2 border-slate-200 text-slate-500 font-bold rounded-lg hover:bg-slate-50 text-xs flex items-center justify-center gap-2 mb-2"><Users size={14}/> 選手交代 / 代打 (PH)</button>
+                     
+                     {/* Opponent Pitcher Selector */}
+                     <div className="bg-red-50 p-2 rounded-lg border border-red-100">
+                         <label className="text-xs font-bold text-red-500 block mb-1">現在登板中の相手投手</label>
+                         <select value={currentOppPitcherId} onChange={(e) => setCurrentOppPitcherId(e.target.value)} className="w-full p-2 text-sm border border-red-200 rounded text-slate-700 bg-white">
+                             <option value="">-- 未選択 (右投扱い) --</option>
+                             {opponentPlayers.map(p => (
+                                 <option key={p.id} value={p.id}>{p.name} (#{p.number}) {p.throws}投</option>
+                             ))}
+                         </select>
+                     </div>
                  </div>
              ) : (
                  <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
@@ -684,7 +732,7 @@ export const InputForm: React.FC = () => {
                               <span className="bg-red-200 text-red-800 text-[10px] font-bold px-2 py-1 rounded">相手打者</span>
                               <div className="flex flex-col">
                                   <span className="font-bold text-sm text-slate-800">{currentOppBatterIndex + 1}番 {getOpponentBatter(0).name}</span>
-                                  <span className="text-xs text-slate-500">#{getOpponentBatter(0).number} {opponentLineupPositions[currentOppBatterIndex]}</span>
+                                  <span className="text-xs text-slate-500">#{getOpponentBatter(0).number} {opponentLineupPositions[currentOppBatterIndex]} {getOpponentBatter(0).bats}打</span>
                               </div>
                           </div>
                           <div className="flex gap-1">
@@ -754,7 +802,7 @@ export const InputForm: React.FC = () => {
          </div>
       )}
 
-      {/* NEW: Batch Batter Form (Unchanged) */}
+      {/* NEW: Batch Batter Form (Updated) */}
       {tab === 'batch_batter' && (
         <div className="animate-in fade-in space-y-4">
             <div className="bg-white p-4 rounded-xl border shadow-sm">
@@ -783,7 +831,8 @@ export const InputForm: React.FC = () => {
                     
                     <Counter label="得点" val={batchStats.r} setVal={(v:number)=>setBatchStats(p=>({...p, r:v}))} />
                     <Counter label="三振" val={batchStats.k} setVal={(v:number)=>setBatchStats(p=>({...p, k:v}))} />
-                    <Counter label="四球" val={batchStats.bb} setVal={(v:number)=>setBatchStats(p=>({...p, bb:v}))} />
+                    <Counter label="四球 (合計)" val={batchStats.bb} setVal={(v:number)=>setBatchStats(p=>({...p, bb:v}))} />
+                    <Counter label="敬遠 (内数)" val={batchStats.ibb} setVal={(v:number)=>setBatchStats(p=>({...p, ibb:v}))} colorClass="bg-blue-50 text-blue-600"/>
                     <Counter label="死球" val={batchStats.hbp} setVal={(v:number)=>setBatchStats(p=>({...p, hbp:v}))} />
                     <Counter label="犠飛" val={batchStats.sf} setVal={(v:number)=>setBatchStats(p=>({...p, sf:v}))} />
                     <Counter label="犠打" val={batchStats.sac} setVal={(v:number)=>setBatchStats(p=>({...p, sac:v}))} />
@@ -793,6 +842,8 @@ export const InputForm: React.FC = () => {
                     <Counter label="併殺" val={batchStats.gidp} setVal={(v:number)=>setBatchStats(p=>({...p, gidp:v}))} />
                 </div>
                 
+                <p className="text-xs text-slate-400 mb-4">※ 「四球」には敬遠を含めた総数を入力してください。「敬遠」欄はその内訳として入力します。</p>
+
                 <button onClick={handleBatterBatchSubmit} disabled={!selectedPlayerId} className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl shadow hover:bg-blue-700 disabled:bg-slate-300 transition">保存する</button>
             </div>
         </div>

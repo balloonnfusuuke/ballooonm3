@@ -5,6 +5,8 @@ export interface Player {
   number: string;
   position: string;
   type: 'batter' | 'pitcher' | 'two-way';
+  throws: 'R' | 'L'; // Right, Left
+  bats: 'R' | 'L' | 'S'; // Right, Left, Switch
   teamId?: string; // If undefined, belongs to "My Team". If defined, belongs to that Opponent ID.
 }
 
@@ -42,6 +44,8 @@ export interface PlateAppearance {
   // Scorebook Coordinates (0-100%)
   coordX?: number; 
   coordY?: number;
+  // Stats Splits
+  vsHand?: 'R' | 'L'; // Handedness of the opposing pitcher
 }
 
 // NEW: Live Pitcher Record (Play-by-Play)
@@ -60,6 +64,8 @@ export interface PitcherPlayRecord {
   isOut: boolean;
   runScored: number; // Runs scored on this play
   earnedRun: number; // ER on this play
+  // Stats Splits
+  vsHand?: 'R' | 'L'; // Handedness of the opposing batter (Resolved for Switch hitters)
 }
 
 // --- Batch Data Types ---
@@ -153,6 +159,10 @@ export interface BatterStats {
   multi_error: number; // 2+ E (Note: Input doesn't track defensive errors per game perfectly yet, but placeholder)
   hr_win_loss: string; // "W-L-D" in games with HR
 
+  // Splits (vs Right / vs Left)
+  ab_vs_r: number; h_vs_r: number; hr_vs_r: number; ops_vs_r: number; avg_vs_r: number;
+  ab_vs_l: number; h_vs_l: number; hr_vs_l: number; ops_vs_l: number; avg_vs_l: number;
+
   // Spray Chart Data (Array of coordinates)
   spray_data: Array<{x: number, y: number, result: ResultType}>;
 }
@@ -190,6 +200,10 @@ export interface PitcherStats {
   consecutive_games: number; consecutive_days: number;
   count_100pitches: number; count_2digit_h: number; count_2hr: number; count_2digit_k: number; count_5bb: number;
   stop_win_streak_count: number; stop_loss_streak_count: number;
+
+  // Splits (vs Right Batter / vs Left Batter)
+  ab_vs_r: number; h_vs_r: number; k_vs_r: number; baa_vs_r: number; ops_allowed_vs_r: number;
+  ab_vs_l: number; h_vs_l: number; k_vs_l: number; baa_vs_l: number; ops_allowed_vs_l: number;
 
   // Spray Chart Data (Array of coordinates)
   spray_data: Array<{x: number, y: number, result: string}>;
