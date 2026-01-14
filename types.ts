@@ -46,6 +46,7 @@ export interface PlateAppearance {
   coordY?: number;
   // Stats Splits
   vsHand?: 'R' | 'L'; // Handedness of the opposing pitcher
+  createdAt?: string; // ISO String for sorting
 }
 
 // NEW: Live Pitcher Record (Play-by-Play)
@@ -66,6 +67,7 @@ export interface PitcherPlayRecord {
   earnedRun: number; // ER on this play
   // Stats Splits
   vsHand?: 'R' | 'L'; // Handedness of the opposing batter (Resolved for Switch hitters)
+  createdAt?: string; // ISO String for sorting
 }
 
 // --- Batch Data Types ---
@@ -214,4 +216,25 @@ export enum TabView {
   DASHBOARD = 'DASHBOARD',
   DATA = 'DATA',
   SETTINGS = 'SETTINGS',
+  VIEWER = 'VIEWER', // Added Viewer Tab
+}
+
+// Viewer Data Type
+export interface LiveGameStatus {
+  gameId: string;
+  date: string;
+  opponent: string;
+  inning: number;
+  isTop: boolean;
+  outs: number;
+  score: { my: number, opp: number };
+  currentSide: 'Attack' | 'Defense';
+  batter: { name: string, number: string } | null;
+  pitcher: { name: string, number: string } | null;
+  runners: {
+    first: { name: string } | null;
+    second: { name: string } | null;
+    third: { name: string } | null;
+  };
+  lastUpdated: string;
 }

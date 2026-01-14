@@ -4,8 +4,9 @@ import { InputForm } from './components/InputForm';
 import { Dashboard } from './components/Dashboard';
 import { Settings } from './components/Settings';
 import { HistoryTab } from './components/HistoryTab';
+import { LiveGameViewer } from './components/LiveGameViewer';
 import { TabView } from './types';
-import { Edit3, BarChart2, Database, BrainCircuit, Settings as SettingsIcon } from 'lucide-react';
+import { Edit3, BarChart2, Database, BrainCircuit, Settings as SettingsIcon, Tv } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabView>(TabView.INPUT);
@@ -20,6 +21,9 @@ const App: React.FC = () => {
               <button onClick={() => setActiveTab(TabView.INPUT)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition font-bold ${activeTab===TabView.INPUT ? 'bg-white text-team-navy' : 'text-slate-300 hover:bg-white/10'}`}>
                   <Edit3 size={20}/> データ入力
               </button>
+              <button onClick={() => setActiveTab(TabView.VIEWER)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition font-bold ${activeTab===TabView.VIEWER ? 'bg-white text-team-navy' : 'text-slate-300 hover:bg-white/10'}`}>
+                  <Tv size={20}/> ライブ観戦
+              </button>
               <button onClick={() => setActiveTab(TabView.DASHBOARD)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition font-bold ${activeTab===TabView.DASHBOARD ? 'bg-white text-team-navy' : 'text-slate-300 hover:bg-white/10'}`}>
                   <BarChart2 size={20}/> 成績分析
               </button>
@@ -32,9 +36,10 @@ const App: React.FC = () => {
           </nav>
 
           {/* Mobile Header (Only visible on small screens) */}
-          <div className="md:hidden flex justify-between p-4 items-center overflow-x-auto">
+          <div className="md:hidden flex justify-between p-4 items-center overflow-x-auto hide-scrollbar">
              <div className="flex gap-4 text-sm font-bold whitespace-nowrap">
                  <button onClick={() => setActiveTab(TabView.INPUT)} className={activeTab===TabView.INPUT ? 'text-white border-b-2 border-white pb-1' : 'text-slate-400'}>入力</button>
+                 <button onClick={() => setActiveTab(TabView.VIEWER)} className={activeTab===TabView.VIEWER ? 'text-white border-b-2 border-white pb-1' : 'text-slate-400'}>ライブ</button>
                  <button onClick={() => setActiveTab(TabView.DASHBOARD)} className={activeTab===TabView.DASHBOARD ? 'text-white border-b-2 border-white pb-1' : 'text-slate-400'}>分析</button>
                  <button onClick={() => setActiveTab(TabView.DATA)} className={activeTab===TabView.DATA ? 'text-white border-b-2 border-white pb-1' : 'text-slate-400'}>履歴</button>
                  <button onClick={() => setActiveTab(TabView.SETTINGS)} className={activeTab===TabView.SETTINGS ? 'text-white border-b-2 border-white pb-1' : 'text-slate-400'}>設定</button>
@@ -59,8 +64,9 @@ const App: React.FC = () => {
                Other tabs are unmounted to ensure they re-fetch fresh data when clicked.
             */}
             <div style={{ display: activeTab === TabView.INPUT ? 'block' : 'none' }}>
-                <InputForm />
+                <InputForm isVisible={activeTab === TabView.INPUT} />
             </div>
+            {activeTab === TabView.VIEWER && <LiveGameViewer />}
             {activeTab === TabView.DASHBOARD && <Dashboard />}
             {activeTab === TabView.DATA && <HistoryTab />}
             {activeTab === TabView.SETTINGS && <Settings />}

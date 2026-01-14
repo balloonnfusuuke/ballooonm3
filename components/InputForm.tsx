@@ -409,6 +409,7 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
   
   const handleRunnerAction = (action: 'SB' | 'CS' | 'Pickoff' | 'Advance' | 'Clear' | 'Change', newPlayerId?: string) => {
       const base = runnerModal.base; if (!base) return; const currentRunnerId = gameState[`${base}Id` as keyof typeof gameState] as string | null; const runnerName = getRunnerName(currentRunnerId); const gameId = `${date}-${opponent}`;
+      const ts = new Date().toISOString();
       if (action === 'Change' && newPlayerId !== undefined) {
           const oldPlayerId = gameState[`${base}Id` as keyof typeof gameState]; setGameState(prev => ({ ...prev, [`${base}Id`]: newPlayerId }));
           if (gameState.currentSide === 'Attack') { const lineupIdx = myLineup.findIndex(id => id === oldPlayerId); if (lineupIdx >= 0) { const newLineup = [...myLineup]; newLineup[lineupIdx] = newPlayerId; setMyLineup(newLineup); } } 
@@ -418,8 +419,8 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
       if (action === 'Clear') { setGameState(prev => ({ ...prev, [base]: false, [`${base}Id`]: null })); setRunnerModal({ isOpen: false, base: null }); return; }
       if (action === 'Advance') { setGameState(prev => { const next = { ...prev }; next[base] = false; (next as any)[`${base}Id`] = null; let target: 'runner2' | 'runner3' | null = null; if (base === 'runner1') target = 'runner2'; if (base === 'runner2') target = 'runner3'; if (target) { next[target] = true; (next as any)[`${target}Id`] = currentRunnerId; } return next; }); showMessage('success', `${runnerName}: 進塁しました`); setRunnerModal({ isOpen: false, base: null }); return; }
       if (!currentRunnerId) { showMessage('error', '先に走者を選択してください'); return; }
-      if (action === 'SB') { const record: PlateAppearance = { id: generateUUID(), gameId, date, opponent, playerId: currentRunnerId, playerName: runnerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, result: 'XI', direction: 0, rbi: 0, isSteal: true, coordX: 0, coordY: 0 }; savePARecord(record); setGameState(prev => { const next = { ...prev }; next[base] = false; (next as any)[`${base}Id`] = null; let target: 'runner2' | 'runner3' | null = null; if (base === 'runner1') target = 'runner2'; if (base === 'runner2') target = 'runner3'; if (target) { next[target] = true; (next as any)[`${target}Id`] = currentRunnerId; } return next; }); showMessage('success', `${runnerName}: 盗塁成功`); }
-      if (action === 'CS') { const record: PlateAppearance = { id: generateUUID(), gameId, date, opponent, playerId: currentRunnerId, playerName: runnerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, result: 'XI', direction: 0, rbi: 0, isSteal: false, coordX: 0, coordY: 0 }; savePARecord(record); setGameState(prev => ({ ...prev, [base]: false, [`${base}Id`]: null, outs: Math.min(2, prev.outs + 1) })); showMessage('success', `${runnerName}: 盗塁死 (アウト+1)`); if (gameState.outs + 1 >= 3) handleChangeSide(); }
+      if (action === 'SB') { const record: PlateAppearance = { id: generateUUID(), gameId, date, opponent, playerId: currentRunnerId, playerName: runnerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, result: 'XI', direction: 0, rbi: 0, isSteal: true, coordX: 0, coordY: 0, createdAt: ts }; savePARecord(record); setGameState(prev => { const next = { ...prev }; next[base] = false; (next as any)[`${base}Id`] = null; let target: 'runner2' | 'runner3' | null = null; if (base === 'runner1') target = 'runner2'; if (base === 'runner2') target = 'runner3'; if (target) { next[target] = true; (next as any)[`${target}Id`] = currentRunnerId; } return next; }); showMessage('success', `${runnerName}: 盗塁成功`); }
+      if (action === 'CS') { const record: PlateAppearance = { id: generateUUID(), gameId, date, opponent, playerId: currentRunnerId, playerName: runnerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, result: 'XI', direction: 0, rbi: 0, isSteal: false, coordX: 0, coordY: 0, createdAt: ts }; savePARecord(record); setGameState(prev => ({ ...prev, [base]: false, [`${base}Id`]: null, outs: Math.min(2, prev.outs + 1) })); showMessage('success', `${runnerName}: 盗塁死 (アウト+1)`); if (gameState.outs + 1 >= 3) handleChangeSide(); }
       if (action === 'Pickoff') { setGameState(prev => ({ ...prev, [base]: false, [`${base}Id`]: null, outs: Math.min(2, prev.outs + 1) })); showMessage('success', `${runnerName}: 牽制死 (アウト+1)`); if (gameState.outs + 1 >= 3) handleChangeSide(); }
       setRunnerModal({ isOpen: false, base: null });
   };
@@ -476,6 +477,7 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
   const confirmReview = () => { if (!reviewModal.result) return; let addedRuns = 0; let addedOuts = 0; const nextGameState = { ...gameState }; nextGameState.runner1 = false; nextGameState.runner1Id = null; nextGameState.runner2 = false; nextGameState.runner2Id = null; nextGameState.runner3 = false; nextGameState.runner3Id = null; reviewModal.runners.forEach(r => { if (r.isOut) { addedOuts++; } else if (r.dest === 'Home') { addedRuns++; } else { if (r.dest === '1B') { nextGameState.runner1 = true; nextGameState.runner1Id = r.playerId; } if (r.dest === '2B') { nextGameState.runner2 = true; nextGameState.runner2Id = r.playerId; } if (r.dest === '3B') { nextGameState.runner3 = true; nextGameState.runner3Id = r.playerId; } } }); nextGameState.outs += addedOuts; commitPlay(reviewModal.result, nextGameState, addedRuns); setReviewModal({ isOpen: false, result: null, runners: [] }); };
   const commitPlay = (res: ResultType, nextState: typeof gameState, runsFromRunners: number) => { 
       const gameId = `${date}-${opponent}`; 
+      const ts = new Date().toISOString();
       let currentPlayerId = '', currentPlayerName = ''; 
       
       // Determine Player ID
@@ -507,7 +509,8 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
               id: generateUUID(), gameId, date, opponent, playerId: currentPlayerId, playerName: currentPlayerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', 
               runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, 
               result: res, direction: selectedDirection || 0, rbi: rbiToSave, isSteal: false, coordX: ballCoord?.x, coordY: ballCoord?.y,
-              vsHand: vsHand // Saved handedness of opponent pitcher
+              vsHand: vsHand, // Saved handedness of opponent pitcher
+              createdAt: ts // Timestamp for sorting
           }; 
           savePARecord(record); showMessage('success', `【攻撃】${currentPlayerName}: ${res}`); 
           if (!['XI', 'WP', 'BK'].includes(res)) setCurrentBatterIndex(prev => (prev + 1) % 9); 
@@ -532,14 +535,15 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
           }
           if (!vsHand) vsHand = 'R';
 
-          const record: PitcherPlayRecord = { id: generateUUID(), gameId, date, opponent, playerId: selectedPitcherId, playerName: players.find(p=>p.id===selectedPitcherId)?.name||'Unknown', inning: gameState.inning, result: res, coordX: ballCoord?.x, coordY: ballCoord?.y, isOut: ['SO','GO','FO','SAC','SF','GIDP'].includes(res), runScored: runsToSave, earnedRun: liveER, vsHand: vsHand }; 
+          const record: PitcherPlayRecord = { id: generateUUID(), gameId, date, opponent, playerId: selectedPitcherId, playerName: players.find(p=>p.id===selectedPitcherId)?.name||'Unknown', inning: gameState.inning, result: res, coordX: ballCoord?.x, coordY: ballCoord?.y, isOut: ['SO','GO','FO','SAC','SF','GIDP'].includes(res), runScored: runsToSave, earnedRun: liveER, vsHand: vsHand, createdAt: ts }; 
           savePitcherPlayRecord(record); 
           if (currentPlayerId && !currentPlayerId.startsWith('unknown')) { 
               const oppRecord: PlateAppearance = { 
                   id: generateUUID(), gameId, date, opponent: 'My Team', playerId: currentPlayerId, playerName: currentPlayerName, inning: gameState.inning, isTop: gameState.topBottom === 'Top', 
                   runner1: gameState.runner1, runner2: gameState.runner2, runner3: gameState.runner3, 
                   result: res, direction: selectedDirection || 0, rbi: runsToSave, isSteal: false, coordX: ballCoord?.x, coordY: ballCoord?.y,
-                  vsHand: myPitcher?.throws || 'R' // Opponent stats vs Me
+                  vsHand: myPitcher?.throws || 'R', // Opponent stats vs Me
+                  createdAt: ts
               }; 
               savePARecord(oppRecord); 
           } showMessage('success', `【守備】結果記録`); 
