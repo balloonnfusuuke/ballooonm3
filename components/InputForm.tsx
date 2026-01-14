@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Player, PlateAppearance, ResultType, PositionNum, GameBatchRecord, PitcherGameRecord, Opponent, PitcherPlayRecord } from '../types';
-import { getPlayers, getOpponents, savePARecord, saveBatchRecord, savePitcherRecord, savePitcherPlayRecord, generateUUID, savePlayer, getPARecords, getPitcherPlayRecords } from '../services/dataService';
+import { getPlayers, getOpponents, savePARecord, saveBatchRecord, savePitcherRecord, savePitcherPlayRecord, generateUUID, savePlayer, getPARecords, getPitcherPlayRecords, updateLiveGameStatus } from '../services/dataService';
 import { AlertCircle, Plus, Minus, Zap, User, Target, ChevronDown, ChevronUp, MapPin, Undo2, Calendar, ClipboardList, Activity, X, MoveRight, UserMinus, Play, RotateCw, Users, Shield, Edit3, Save, HelpCircle, Info, CheckCircle2, AlertTriangle, FileText, Download, Copy, RefreshCcw, LogOut, UserPlus, ArrowLeftRight, Share2 } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -125,6 +125,27 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
   const computedOuts = ((pStats.ip||0) * 3) + (pStats.outs_frac||0);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
+  // Helper function to resolve runner names inside useEffect or render
+  const getRunnerName = (id: string | null) => {
+    if (!id) return "";
+    const p = players.find(p => p.id === id);
+    if (p) return `${p.name} ${p.number ? '#'+p.number : ''}`;
+    return "不明";
+  };
+  
+  // Helpers for current batter/pitcher (Moved up to be accessible in useEffect)
+  const getBatterInLineup = (offset: number = 0) => {
+      const idx = (currentBatterIndex + offset) % 9;
+      const pid = myLineup[idx];
+      return players.find(p => p.id === pid);
+  };
+
+  const getOpponentBatter = (offset: number = 0) => {
+      const idx = (currentOppBatterIndex + offset) % 9;
+      const pid = opponentLineupIds[idx];
+      return players.find(p => p.id === pid) || { id: `unknown-${idx}`, name: `相手${idx+1}番`, number: '' } as Player;
+  };
+
   // Initial Load
   useEffect(() => {
     setPlayers(getPlayers());
@@ -172,6 +193,7 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
 
   useEffect(() => {
       if (gamePhase === 'playing' || (gamePhase === 'setup' && opponent)) {
+          // 1. Save to Local Storage
           const session = {
               date, opponent, currentOpponentId,
               myLineup, opponentLineupIds,
@@ -181,11 +203,57 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
               liveRbi, liveRunScored, liveER
           };
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+
+          // 2. Sync Current Game Status to Firebase (For Viewers)
+          if (gamePhase === 'playing' && opponent && date) {
+              const gameId = `${date}-${opponent}`;
+              
+              // Resolve Current Batter/Pitcher for Viewer
+              let currentBatter = null;
+              let currentPitcher = null;
+              const opponentPlayers = currentOpponentId ? players.filter(p => p.teamId === currentOpponentId) : [];
+
+              if (gameState.currentSide === 'Attack') {
+                  const b = getBatterInLineup(0);
+                  currentBatter = b ? { id: b.id, name: b.name, number: b.number } : null;
+                  
+                  // Opponent Pitcher
+                  const oppP = players.find(p => p.id === currentOppPitcherId) || opponentPlayers.find(p => p.id === currentOppPitcherId);
+                  currentPitcher = oppP ? { id: oppP.id, name: oppP.name, number: oppP.number } : { name: '相手投手' };
+              } else {
+                  const b = getOpponentBatter(0);
+                  currentBatter = b ? { id: b.id, name: b.name, number: b.number } : null;
+                  
+                  // My Pitcher
+                  const myP = players.find(p => p.id === selectedPitcherId);
+                  currentPitcher = myP ? { id: myP.id, name: myP.name, number: myP.number } : null;
+              }
+
+              const status = {
+                  gameId,
+                  date,
+                  opponent,
+                  inning: gameState.inning,
+                  isTop: gameState.topBottom === 'Top',
+                  outs: gameState.outs,
+                  score: currentScore,
+                  currentSide: gameState.currentSide,
+                  batter: currentBatter,
+                  pitcher: currentPitcher,
+                  runners: {
+                      first: gameState.runner1 ? { id: gameState.runner1Id, name: getRunnerName(gameState.runner1Id) } : null,
+                      second: gameState.runner2 ? { id: gameState.runner2Id, name: getRunnerName(gameState.runner2Id) } : null,
+                      third: gameState.runner3 ? { id: gameState.runner3Id, name: getRunnerName(gameState.runner3Id) } : null,
+                  }
+              };
+              
+              updateLiveGameStatus(gameId, status);
+          }
       }
   }, [
       gamePhase, date, opponent, currentOpponentId, myLineup, opponentLineupIds, myLineupPositions, opponentLineupPositions,
       gameState, currentBatterIndex, currentOppBatterIndex, selectedPitcherId, currentOppPitcherId,
-      liveRbi, liveRunScored, liveER
+      liveRbi, liveRunScored, liveER, currentScore, players // Added currentScore and players to deps
   ]);
 
   useEffect(() => {
@@ -236,13 +304,6 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
   const myTeamPlayers = players.filter(p => !p.teamId);
   const opponentPlayers = currentOpponentId ? players.filter(p => p.teamId === currentOpponentId) : [];
 
-  const getRunnerName = (id: string | null) => {
-    if (!id) return "";
-    const p = players.find(p => p.id === id);
-    if (p) return `${p.name} ${p.number ? '#'+p.number : ''}`;
-    return "不明";
-  };
-
   const handleBaseClick = (base: 'runner1' | 'runner2' | 'runner3') => { setRunnerModal({ isOpen: true, base }); };
 
   // Enhanced Lineup Change with Position
@@ -290,18 +351,6 @@ export const InputForm: React.FC<InputFormProps> = ({ isVisible }) => {
       if (!currentOpponentId && !confirm('対戦相手がリストに登録されていません。相手選手の成績は保存されませんがよろしいですか？')) return;
       setGamePhase('playing');
       showMessage('success', '試合開始！');
-  };
-
-  const getBatterInLineup = (offset: number = 0) => {
-      const idx = (currentBatterIndex + offset) % 9;
-      const pid = myLineup[idx];
-      return players.find(p => p.id === pid);
-  };
-
-  const getOpponentBatter = (offset: number = 0) => {
-      const idx = (currentOppBatterIndex + offset) % 9;
-      const pid = opponentLineupIds[idx];
-      return players.find(p => p.id === pid) || { id: `unknown-${idx}`, name: `相手${idx+1}番`, number: '' } as Player;
   };
 
   const handlePinchHit = (newPlayerId: string) => {

@@ -42,6 +42,23 @@ const deleteFromFirebase = async (collectionName: string, id: string) => {
     }
 };
 
+// --- NEW: Real-time Game Status Sync ---
+// This updates the "current situation" (batter, runners, outs) for viewers
+export const updateLiveGameStatus = async (gameId: string, status: any) => {
+    if (!gameId || gameId.includes('undefined')) return;
+    try {
+        // We use a separate collection 'live_games' to store the current state of each game
+        // Viewers can listen to this document to see "Who is at bat?"
+        const sanitized = JSON.parse(JSON.stringify(status));
+        await setDoc(doc(db, "live_games", gameId), {
+            ...sanitized,
+            lastUpdated: new Date().toISOString()
+        }, { merge: true });
+    } catch (e) {
+        console.error("Failed to sync live status", e);
+    }
+};
+
 
 // --- INITIAL SAMPLE DATA ---
 
